@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Search, Users, ArrowLeft, Upload, Trash2, CheckSquare, Square, Camera } from "lucide-react"
+import { Search, Users, ArrowLeft, Upload, Trash2, CheckSquare, Square, Camera, LayoutGrid, Grid3x3 } from "lucide-react"
 import { getAllStudentsClient, searchStudentsClient, type Student } from "@/lib/student-management"
 import { useAuth } from "@/lib/auth"
 import { CsvImport } from "@/components/csv-import"
@@ -39,6 +39,7 @@ export default function ManageStudentsPage() {
   const [showMassPhotoUpload, setShowMassPhotoUpload] = useState(false)
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
+  const [viewMode, setViewMode] = useState<"cards" | "thumbnails">("cards")
 
   const handleBackClick = () => {
     const backUrl = userRole === "admin" ? "/admin" : "/dashboard"
@@ -213,6 +214,28 @@ export default function ManageStudentsPage() {
               <Camera className="h-4 w-4 mr-2" />
               {showMassPhotoUpload ? "Hide Photos" : "Upload Photos"}
             </Button>
+            <div className="flex items-center rounded-md border border-border p-0.5">
+              <Button
+                variant={viewMode === "cards" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => setViewMode("cards")}
+                aria-label="Card view"
+                aria-pressed={viewMode === "cards"}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "thumbnails" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => setViewMode("thumbnails")}
+                aria-label="Thumbnail view"
+                aria-pressed={viewMode === "thumbnails"}
+              >
+                <Grid3x3 className="h-4 w-4" />
+              </Button>
+            </div>
             <Badge variant="secondary" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               {students.length} Students
@@ -344,6 +367,44 @@ export default function ManageStudentsPage() {
               </p>
             </CardContent>
           </Card>
+        ) : viewMode === "thumbnails" ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+            {students.map((student) => (
+              <Card
+                key={student.uin}
+                className={`group relative cursor-pointer overflow-hidden transition-all hover:shadow-md hover:scale-[1.02] ${
+                  selectedStudents.has(student.uin) ? "ring-2 ring-primary" : ""
+                }`}
+                onClick={(e) => handleStudentClick(student.uin, e)}
+              >
+                <div
+                  className="absolute top-2 right-2 z-10 rounded bg-background/80 p-0.5 backdrop-blur-sm"
+                  data-checkbox
+                >
+                  <Checkbox
+                    checked={selectedStudents.has(student.uin)}
+                    onCheckedChange={() => handleSelectStudent(student.uin)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <CardContent className="flex flex-col items-center gap-2 p-3 text-center">
+                  <StudentPhoto
+                    photoFilename={student.photo_url}
+                    firstName={student.first_name}
+                    lastName={student.last_name}
+                    size="xl"
+                  />
+                  <div className="min-w-0 w-full">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {student.first_name} {student.last_name}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">UIN: {student.uin}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">Room: {student.room_number || "N/A"}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {students.map((student) => (
