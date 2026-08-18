@@ -114,7 +114,8 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
           Import Students from CSV
         </CardTitle>
         <CardDescription>
-          Upload a CSV file with columns: UIN, Fname, Lname, room_number, meal_plan, group (optional)
+          Upload a CSV file with columns: UIN, Fname, Lname, room_number, meal_plan, meal_plan_type (optional), group
+          (optional)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -181,10 +182,14 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
             <AlertDescription>
               <div className="font-medium mb-1">CSV Format Requirements:</div>
               <ul className="text-sm space-y-1">
-                <li>• Header row: UIN, Fname, Lname, room_number, meal_plan, group (optional)</li>
+                <li>• Header row: UIN, Fname, Lname, room_number, meal_plan, meal_plan_type (optional), group (optional)</li>
                 <li>• UIN: 2-9 digit number</li>
-                <li>• Room number: 3 digits followed by a letter (e.g., 123A) or leave empty for N/A</li>
-                <li>• Meal plan: Number of swipes/week, or 0 for count-only plan</li>
+                <li>• Room number: any letters and/or numbers, any length (e.g., 123A, A12, 4B217) or leave empty for N/A</li>
+                <li>• Meal plan: Number of swipes/credits (positive number). Leave empty or 0 for a count-only plan</li>
+                <li>
+                  • Meal plan type (optional): standard, count, or prepaid. If omitted, 0 = count and any other number =
+                  standard
+                </li>
                 <li>• Group: Group name to assign student to (optional, leave empty to skip)</li>
               </ul>
             </AlertDescription>

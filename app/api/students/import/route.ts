@@ -2,12 +2,15 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+type MealPlanType = "standard" | "count" | "prepaid"
+
 interface StudentRow {
   UIN: string
   Fname: string
   Lname: string
   room_number: string | null
   meal_plan: string
+  meal_plan_type: MealPlanType
   group: string | null
   base_location: string | null
 }
@@ -88,7 +91,8 @@ export async function POST(request: NextRequest) {
 
     const hasGroupColumn = header.includes("group")
     const hasBaseLocationColumn = header.includes("base_location")
-    console.log("[v0] CSV header validated, has group column:", hasGroupColumn, ", has base_location column:", hasBaseLocationColumn)
+    const hasMealPlanTypeColumn = header.includes("meal_plan_type")
+    console.log("[v0] CSV header validated, has group column:", hasGroupColumn, ", has base_location column:", hasBaseLocationColumn, ", has meal_plan_type column:", hasMealPlanTypeColumn)
 
     // Parse data rows
     const students: StudentRow[] = []
@@ -114,6 +118,7 @@ export async function POST(request: NextRequest) {
       const lname = studentData.Lname
       const roomNumber = studentData.room_number
       const mealPlan = studentData.meal_plan
+      const mealPlanTypeRaw = hasMealPlanTypeColumn ? (studentData.meal_plan_type || "").trim().toLowerCase() : ""
       const group = hasGroupColumn ? studentData.group || null : null
       const baseLocation = hasBaseLocationColumn ? studentData.base_location || null : null
 
@@ -136,24 +141,44 @@ export async function POST(request: NextRequest) {
 
       let validatedRoomNumber: string | null = null
       if (roomNumber && roomNumber.trim() !== "") {
-        if (!/^\d{3}[A-Za-z]$/.test(roomNumber)) {
+        // Accept any alphanumeric room number of any length (letters and/or digits, any combination)
+        if (!/^[A-Za-z0-9]+$/.test(roomNumber.trim())) {
           errors.push(
-            `Row ${i + 1}: Invalid room number format (must be 3 digits followed by a letter, or leave empty)`,
+            `Row ${i + 1}: Invalid room number (letters and numbers only, no spaces or symbols, or leave empty)`,
           )
           continue
         }
-        validatedRoomNumber = roomNumber.toUpperCase()
+        validatedRoomNumber = roomNumber.trim().toUpperCase()
       }
 
-      if (!mealPlan || !/^\d+$/.test(mealPlan)) {
-        errors.push(`Row ${i + 1}: Invalid meal plan (must be a number, 0 for count-only)`)
-        continue
+      // Determine the meal plan type. When the meal_plan_type column is present,
+      // it takes precedence; otherwise fall back to the legacy rule (0 = count).
+      let mealPlanType: MealPlanType
+      if (hasMealPlanTypeColumn && mealPlanTypeRaw !== "") {
+        if (!["standard", "count", "prepaid"].includes(mealPlanTypeRaw)) {
+          errors.push(`Row ${i + 1}: Invalid meal_plan_type "${mealPlanTypeRaw}" (must be standard, count, or prepaid)`)
+          continue
+        }
+        mealPlanType = mealPlanTypeRaw as MealPlanType
+      } else {
+        mealPlanType = Number.parseInt(mealPlan) === 0 ? "count" : "standard"
       }
 
-      const mealPlanNum = Number.parseInt(mealPlan)
-      if (mealPlanNum < 0) {
-        errors.push(`Row ${i + 1}: Invalid meal plan (must be 0 or positive)`)
-        continue
+      // Count-only plans don't need a meal_plan value; standard/prepaid require a positive number.
+      if (mealPlanType === "count") {
+        if (mealPlan && !/^\d+$/.test(mealPlan)) {
+          errors.push(`Row ${i + 1}: Invalid meal plan (must be a number, or leave empty for count-only)`)
+          continue
+        }
+      } else {
+        if (!mealPlan || !/^\d+$/.test(mealPlan)) {
+          errors.push(`Row ${i + 1}: Invalid meal plan (must be a positive number for ${mealPlanType} plans)`)
+          continue
+        }
+        if (Number.parseInt(mealPlan) <= 0) {
+          errors.push(`Row ${i + 1}: Invalid meal plan (must be greater than 0 for ${mealPlanType} plans)`)
+          continue
+        }
       }
 
       students.push({
@@ -161,7 +186,8 @@ export async function POST(request: NextRequest) {
         Fname: fname,
         Lname: lname,
         room_number: validatedRoomNumber,
-        meal_plan: mealPlan,
+        meal_plan: mealPlan || "0",
+        meal_plan_type: mealPlanType,
         group: group && group.trim() !== "" ? group.trim() : null,
         base_location: baseLocation && baseLocation.trim() !== "" ? baseLocation.trim() : null,
       })
@@ -254,8 +280,10 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < students.length; i += batchSize) {
       const batch = students.slice(i, i + batchSize)
       const studentsToInsert = batch.map((student) => {
-        const mealPlanNum = Number.parseInt(student.meal_plan)
-        const isCountOnly = mealPlanNum === 0
+        const mealPlanType = student.meal_plan_type
+        // Count-only plans have no credit limit; standard/prepaid start with the given number of credits.
+        const mealPlanNum = mealPlanType === "count" ? 0 : Number.parseInt(student.meal_plan)
+        const weeklyCredits = mealPlanType === "count" ? 0 : mealPlanNum
         const groupId = student.group ? groupMap.get(student.group.toLowerCase()) || null : null
         const baseLocationId = student.base_location ? locationMap.get(student.base_location.toLowerCase()) || null : null
         return {
@@ -264,8 +292,8 @@ export async function POST(request: NextRequest) {
           last_name: student.Lname,
           room_number: student.room_number,
           meal_plan: mealPlanNum,
-          weekly_credits: isCountOnly ? 0 : mealPlanNum,
-          meal_plan_type: isCountOnly ? "count" : "standard",
+          weekly_credits: weeklyCredits,
+          meal_plan_type: mealPlanType,
           photo_url: "/placeholder.svg?height=150&width=150",
           group_id: groupId,
           base_location_id: baseLocationId,
