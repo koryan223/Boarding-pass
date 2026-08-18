@@ -118,7 +118,7 @@ export async function getStudentById(id: string): Promise<Student | null> {
   const supabase = await createServerClient()
   if (!id || id === "undefined") return null
 
-  const { data, error } = await supabase.from("students").select("*").eq("uin", id).single()
+  const { data, error } = await supabase.from("students").select("*, groups(name)").eq("uin", id).single()
 
   if (error || !data) {
     console.error("[v0] Error fetching student:", error)

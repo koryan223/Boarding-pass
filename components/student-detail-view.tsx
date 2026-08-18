@@ -378,6 +378,12 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
                       </Badge>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-muted-foreground">Group:</span>
+                      <Badge variant={student.groups?.name ? "default" : "secondary"}>
+                        {student.groups?.name || "Unassigned"}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-muted-foreground">Plan Type:</span>
                       <Badge variant={isCountPlan ? "secondary" : isPrepaidPlan ? "outline" : "default"}>
                         {isCountPlan ? "Count Only" : isPrepaidPlan ? "Prepaid" : "Standard"}
