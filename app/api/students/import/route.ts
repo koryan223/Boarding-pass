@@ -74,24 +74,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Parse header
-    const header = lines[0].split(",").map((col) => col.trim().replace(/"/g, ""))
-    const requiredColumns = ["UIN", "Fname", "Lname", "room_number", "meal_plan"]
+    // Parse header (strip BOM on the first cell and normalize to lowercase for
+    // case-insensitive column matching, so "Group", "GROUP", "group" all work).
+    const header = lines[0]
+      .split(",")
+      .map((col) => col.trim().replace(/^\uFEFF/, "").replace(/"/g, ""))
+    const normalizedHeader = header.map((col) => col.toLowerCase())
+    const requiredColumns = ["uin", "fname", "lname", "room_number", "meal_plan"]
 
-    // Validate header - only required columns
-    const missingColumns = requiredColumns.filter((col) => !header.includes(col))
+    // Validate header - only required columns (case-insensitive)
+    const missingColumns = requiredColumns.filter((col) => !normalizedHeader.includes(col))
     if (missingColumns.length > 0) {
       return NextResponse.json(
         {
-          error: `Missing required columns: ${missingColumns.join(", ")}. Expected: ${requiredColumns.join(", ")} (group column is optional)`,
+          error: `Missing required columns: ${missingColumns.join(", ")}. Expected: ${requiredColumns.join(", ")} (group and base_location columns are optional)`,
         },
         { status: 400 },
       )
     }
 
-    const hasGroupColumn = header.includes("group")
-    const hasBaseLocationColumn = header.includes("base_location")
-    const hasMealPlanTypeColumn = header.includes("meal_plan_type")
+    const hasGroupColumn = normalizedHeader.includes("group")
+    const hasBaseLocationColumn = normalizedHeader.includes("base_location")
+    const hasMealPlanTypeColumn = normalizedHeader.includes("meal_plan_type")
     console.log("[v0] CSV header validated, has group column:", hasGroupColumn, ", has base_location column:", hasBaseLocationColumn, ", has meal_plan_type column:", hasMealPlanTypeColumn)
 
     // Parse data rows
@@ -107,15 +111,15 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const studentData: any = {}
-      header.forEach((col, index) => {
+      const studentData: Record<string, string> = {}
+      normalizedHeader.forEach((col, index) => {
         studentData[col] = row[index] || ""
       })
 
-      // Validate student data
-      const uin = studentData.UIN
-      const fname = studentData.Fname
-      const lname = studentData.Lname
+      // Validate student data (keys are normalized to lowercase)
+      const uin = studentData.uin
+      const fname = studentData.fname
+      const lname = studentData.lname
       const roomNumber = studentData.room_number
       const mealPlan = studentData.meal_plan
       const mealPlanTypeRaw = hasMealPlanTypeColumn ? (studentData.meal_plan_type || "").trim().toLowerCase() : ""
