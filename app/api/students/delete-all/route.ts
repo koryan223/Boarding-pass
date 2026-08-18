@@ -1,15 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireRole } from "@/lib/auth-server"
 
 export async function POST(request: NextRequest) {
   try {
     console.log("[SERVER][v0] Delete all students API called")
 
-    const supabase = await createServerClient()
-    const user = await requireRole(supabase, ["admin", "staff"])
+    const { user } = await requireRole(["admin", "staff"])
 
-    const { data: students, error: fetchError } = await supabase.from("students").select("*")
+    const adminSupabase = createAdminClient()
+
+    const { data: students, error: fetchError } = await adminSupabase.from("students").select("*")
 
     if (fetchError) {
       console.error("[SERVER][v0] Error fetching students for deletion:", fetchError)
@@ -27,14 +28,14 @@ export async function POST(request: NextRequest) {
     console.log(`[SERVER][v0] Deleting all ${students.length} students`)
 
     console.log("[SERVER][v0] Deleting all meal swipes first")
-    const { error: mealSwipesDeleteError } = await supabase.from("meal_swipes").delete().neq("student_uin", "") // Delete all meal swipes
+    const { error: mealSwipesDeleteError } = await adminSupabase.from("meal_swipes").delete().neq("student_uin", "") // Delete all meal swipes
 
     if (mealSwipesDeleteError) {
       console.error("[SERVER][v0] Error deleting all meal swipes:", mealSwipesDeleteError)
       return NextResponse.json({ error: "Failed to delete associated meal swipes" }, { status: 500 })
     }
 
-    const { error: logError } = await supabase.from("student_deletion_log").insert(
+    const { error: logError } = await adminSupabase.from("student_deletion_log").insert(
       students.map((student) => ({
         deleted_student_uin: student.uin,
         deleted_student_name: `${student.first_name} ${student.last_name}`,
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Delete all students
-    const { error: deleteError, count } = await supabase.from("students").delete().neq("uin", "") // Delete all records (using a condition that matches all)
+    const { error: deleteError, count } = await adminSupabase.from("students").delete().neq("uin", "") // Delete all records (using a condition that matches all)
 
     if (deleteError) {
       console.error("[SERVER][v0] Error deleting all students:", deleteError)
