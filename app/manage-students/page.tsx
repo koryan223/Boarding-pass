@@ -383,6 +383,17 @@ export default function ManageStudentsPage() {
                       <span className="font-medium">{student.room_number || "N/A"}</span>
                     </div>
                     <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Group:</span>
+                      {student.groups?.name ? (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {student.groups.name}
+                        </Badge>
+                      ) : (
+                        <span className="font-medium text-muted-foreground">Unassigned</span>
+                      )}
+                    </div>
+                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Meal Plan:</span>
                       <span className="font-medium">
                         {student.meal_plan_type === "count" || student.meal_plan === 0

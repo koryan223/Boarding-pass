@@ -145,7 +145,16 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    const { uin, first_name, last_name, room_number, meal_plan, meal_plan_type = "standard", group_id } = body
+    const {
+      uin,
+      first_name,
+      last_name,
+      room_number,
+      meal_plan,
+      meal_plan_type = "standard",
+      group_id,
+      base_location_id,
+    } = body
 
     // Validate required fields - meal_plan not required for count plans
     if (!uin || !first_name || !last_name) {
@@ -192,6 +201,7 @@ export async function POST(request: NextRequest) {
         meal_plan_type: meal_plan_type,
         photo_url: "/placeholder.svg?height=150&width=150",
         group_id: group_id || null,
+        base_location_id: base_location_id || null,
       })
       .select()
       .single()

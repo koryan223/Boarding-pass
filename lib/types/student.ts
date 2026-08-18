@@ -11,6 +11,8 @@ export interface Student {
   updated_at: string
   group_id: string | null
   base_location_id: string | null
+  // Embedded relation names (populated via Supabase joins for display)
+  groups?: { name: string } | null
 }
 
 export interface StudentSwipeAnalytics {

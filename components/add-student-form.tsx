@@ -16,11 +16,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { UserPlus, Loader2, Upload, X, Users } from "lucide-react"
+import { UserPlus, Loader2, Upload, X, Users, MapPin } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useEffect } from "react"
 
 interface Group {
+  id: string
+  name: string
+}
+
+interface Location {
   id: string
   name: string
 }
@@ -40,6 +45,7 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
     mealPlan: "",
     mealPlanType: "standard" as "standard" | "count" | "prepaid",
     groupId: "" as string,
+    baseLocationId: "" as string,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
@@ -47,10 +53,13 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [groups, setGroups] = useState<Group[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
+  const [locations, setLocations] = useState<Location[]>([])
+  const [loadingLocations, setLoadingLocations] = useState(false)
 
   useEffect(() => {
-    if (isOpen && groups.length === 0) {
-      fetchGroups()
+    if (isOpen) {
+      if (groups.length === 0) fetchGroups()
+      if (locations.length === 0) fetchLocations()
     }
   }, [isOpen])
 
@@ -69,6 +78,21 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
     }
   }
 
+  const fetchLocations = async () => {
+    try {
+      setLoadingLocations(true)
+      const response = await fetch("/api/locations")
+      if (response.ok) {
+        const data = await response.json()
+        setLocations(data.locations || [])
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch locations:", error)
+    } finally {
+      setLoadingLocations(false)
+    }
+  }
+
   const handleOpenChange = (open: boolean) => {
     console.log("[v0] AddStudentForm dialog open state changed:", open)
     setIsOpen(open)
@@ -81,6 +105,7 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
         mealPlan: "",
         mealPlanType: "standard",
         groupId: "",
+        baseLocationId: "",
       })
       setErrors({})
       setSelectedPhoto(null)
@@ -186,6 +211,7 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
           weekly_credits: formData.mealPlanType === "prepaid" ? Number.parseInt(formData.mealPlan.trim()) : undefined,
           meal_plan_type: formData.mealPlanType,
           group_id: formData.groupId || null,
+          base_location_id: formData.baseLocationId || null,
         }),
       })
 
@@ -225,6 +251,7 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
         mealPlan: "",
         mealPlanType: "standard",
         groupId: "",
+        baseLocationId: "",
       })
       setErrors({})
       setSelectedPhoto(null)
@@ -255,6 +282,7 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
         mealPlan: "",
         mealPlanType: "standard",
         groupId: "",
+        baseLocationId: "",
       })
       setErrors({})
       setSelectedPhoto(null)
@@ -412,6 +440,32 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
             <p className="text-xs text-muted-foreground">
               Assign the student to a group for easier management
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="baseLocation">Base Location (Optional)</Label>
+            <Select
+              value={formData.baseLocationId || "none"}
+              onValueChange={(value) => {
+                setFormData((prev) => ({ ...prev, baseLocationId: value === "none" ? "" : value }))
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select a base location"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Unassigned</SelectItem>
+                {locations.map((location) => (
+                  <SelectItem key={location.id} value={location.id}>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-3 w-3" />
+                      {location.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">The student&apos;s primary dining location</p>
           </div>
 
           <div className="space-y-2">

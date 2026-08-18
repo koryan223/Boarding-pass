@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { randomUUID } from "node:crypto"
 import { requireRole } from "@/lib/auth-server"
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg"
     // We'll use a simple path for the filename now
-    const filename = `${studentId}/${self.crypto.randomUUID()}.${fileExtension}`
+    const filename = `${studentId}/${randomUUID()}.${fileExtension}`
 
     const { error: uploadError } = await adminSupabase.storage
       .from("student-photos")

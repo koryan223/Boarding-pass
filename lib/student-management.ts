@@ -62,7 +62,10 @@ async function generateSignedPhotoUrls(
 // Server-side functions (called by API routes)
 export async function getAllStudents(): Promise<Student[]> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase.from("students").select("*").order("last_name", { ascending: true })
+  const { data, error } = await supabase
+    .from("students")
+    .select("*, groups(name)")
+    .order("last_name", { ascending: true })
 
   if (error) {
     console.error("[v0] Error fetching students:", error)
@@ -83,7 +86,7 @@ export async function searchStudents(query: string): Promise<Student[]> {
     // Search for first name AND last name match
     const { data, error } = await supabase
       .from("students")
-      .select("*")
+      .select("*, groups(name)")
       .ilike("first_name", `%${firstName}%`)
       .ilike("last_name", `%${lastName}%`)
       .order("last_name", { ascending: true })
@@ -99,7 +102,7 @@ export async function searchStudents(query: string): Promise<Student[]> {
   // Single word search - check UIN, first_name, or last_name
   const { data, error } = await supabase
     .from("students")
-    .select("*")
+    .select("*, groups(name)")
     .or(`uin.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
     .order("last_name", { ascending: true })
 
