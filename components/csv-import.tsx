@@ -115,7 +115,7 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
         </CardTitle>
         <CardDescription>
           Upload a CSV file with columns: UIN, Fname, Lname, room_number, meal_plan, meal_plan_type (optional), group
-          (optional)
+          (optional), base_location (optional)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -182,7 +182,10 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
             <AlertDescription>
               <div className="font-medium mb-1">CSV Format Requirements:</div>
               <ul className="text-sm space-y-1">
-                <li>• Header row: UIN, Fname, Lname, room_number, meal_plan, meal_plan_type (optional), group (optional)</li>
+                <li>
+                  • Header row: UIN, Fname, Lname, room_number, meal_plan, meal_plan_type (optional), group (optional),
+                  base_location (optional)
+                </li>
                 <li>• UIN: 2-9 digit number</li>
                 <li>• Room number: any letters and/or numbers, any length (e.g., 123A, A12, 4B217) or leave empty for N/A</li>
                 <li>• Meal plan: Number of swipes/credits (positive number). Leave empty or 0 for a count-only plan</li>
@@ -190,7 +193,11 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
                   • Meal plan type (optional): standard, count, or prepaid. If omitted, 0 = count and any other number =
                   standard
                 </li>
-                <li>• Group: Group name to assign student to (optional, leave empty to skip)</li>
+                <li>• Group: Group name to assign student to (optional). New groups are created automatically if they don't exist</li>
+                <li>
+                  • Base location: Location name to assign student to (optional). New locations are created automatically
+                  if they don&apos;t exist
+                </li>
               </ul>
             </AlertDescription>
           </Alert>

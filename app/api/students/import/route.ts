@@ -225,13 +225,22 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Check for locations that don't exist
-      const missingLocations = locationNames.filter(name => !locationMap.has(name.toLowerCase()))
-      if (missingLocations.length > 0) {
-        console.log("[v0] Warning: Some locations do not exist:", missingLocations)
-        // Add warnings to errors for missing locations
-        for (const loc of missingLocations) {
-          errors.push(`Warning: Base location "${loc}" does not exist and will be skipped`)
+      // Create missing locations instead of skipping them
+      for (const locationName of locationNames) {
+        if (!locationMap.has(locationName.toLowerCase())) {
+          console.log("[v0] Creating new location:", locationName)
+          const { data: newLocation, error: createError } = await adminSupabase
+            .from("locations")
+            .insert({ name: locationName })
+            .select("id, name")
+            .single()
+
+          if (newLocation && !createError) {
+            locationMap.set(newLocation.name.toLowerCase(), newLocation.id)
+          } else {
+            console.error("[v0] Failed to create location:", locationName, createError)
+            errors.push(`Warning: Failed to create base location "${locationName}"`)
+          }
         }
       }
     }
