@@ -11,6 +11,9 @@ const diningStationApiRoutes = [
   "/api/auth/me",
   "/api/menu",
   "/api/sessions/auto-close",
+  // Read-only access so dining station users can pick a location when starting a
+  // session. Creating/managing locations stays admin-only (enforced in the route).
+  "/api/locations",
 ]
 const assetRoutes = ["/placeholder.svg", "/_next/static", "/favicon.ico", "/images"]
 

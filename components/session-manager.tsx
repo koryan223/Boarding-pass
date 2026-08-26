@@ -38,7 +38,7 @@ export function SessionManager() {
   const [sessionTitle, setSessionTitle] = useState("")
   const [sessionDescription, setSessionDescription] = useState("")
   const [reentryEnabled, setReentryEnabled] = useState<"enabled" | "disabled">("enabled") // Updated default value to "enabled"
-  const [selectedLocationId, setSelectedLocationId] = useState<string>("none")
+  const [selectedLocationId, setSelectedLocationId] = useState<string>("")
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([])
   const [isLoading, setIsLoading] = useState(false)
   const [sessionDuration, setSessionDuration] = useState("")
@@ -181,14 +181,17 @@ export function SessionManager() {
       return
     }
 
+    if (!selectedLocationId) {
+      toast({
+        title: "Error",
+        description: "Please select a location for this session",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
-    console.log("[v0] Calling startSession...")
-    const locationIdToSend = selectedLocationId === "none" ? null : selectedLocationId
-    const { data, error } = await startSession(
-      sessionTitle.trim(),
-      reentryEnabled === "enabled",
-      locationIdToSend || undefined,
-    )
+    const { data, error } = await startSession(sessionTitle.trim(), reentryEnabled === "enabled", selectedLocationId)
     console.log("[v0] startSession result:", { data, error })
 
     if (error) {
@@ -407,14 +410,13 @@ export function SessionManager() {
             <div className="grid gap-2">
               <Label htmlFor="location-select" className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
-                Location (Optional)
+                Location <span className="text-destructive">*</span>
               </Label>
               <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
                 <SelectTrigger id="location-select">
                   <SelectValue placeholder="Select a location" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
                   {locations.map((location) => (
                     <SelectItem key={location.id} value={location.id}>
                       {location.name}
@@ -422,7 +424,7 @@ export function SessionManager() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-sm text-muted-foreground">Assign a location to this session for better tracking</p>
+              <p className="text-sm text-muted-foreground">Every session must be assigned to a location</p>
             </div>
           </div>
           <DialogFooter>
