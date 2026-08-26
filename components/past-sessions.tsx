@@ -484,7 +484,9 @@ function PastSessions() {
                           <TableCell>
                             {swipe.students?.meal_plan_type === "count" || swipe.students?.meal_plan === 0
                               ? "Count Only"
-                              : `${swipe.students?.meal_plan || 0}/week`}
+                              : swipe.students?.meal_plan_type === "prepaid"
+                                ? `Prepaid: ${swipe.students?.meal_plan || 0}`
+                                : `${swipe.students?.meal_plan || 0}/week`}
                           </TableCell>
                           <TableCell>{swipe.students?.room_number || "N/A"}</TableCell>
                           <TableCell>{getStatusBadge(swipe.status)}</TableCell>

@@ -459,7 +459,9 @@ export default function ManageStudentsPage() {
                       <span className="font-medium">
                         {student.meal_plan_type === "count" || student.meal_plan === 0
                           ? "Count Only"
-                          : `${student.meal_plan} swipes/week`}
+                          : student.meal_plan_type === "prepaid"
+                            ? `Prepaid: ${student.meal_plan}`
+                            : `${student.meal_plan} swipes/week`}
                       </span>
                     </div>
                     {student.meal_plan_type !== "count" && student.meal_plan > 0 && (

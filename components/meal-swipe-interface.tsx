@@ -361,6 +361,10 @@ export function MealSwipeInterface() {
     if (isCountPlan) {
       return "Count Only"
     }
+    // Prepaid balances deplete over time, so they are not a weekly allowance
+    if (student.meal_plan_type === "prepaid") {
+      return `Prepaid: ${student.meal_plan}`
+    }
     return `${student.meal_plan} swipes/week`
   }
 
