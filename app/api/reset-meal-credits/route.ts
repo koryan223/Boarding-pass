@@ -36,29 +36,30 @@ export async function POST(request: NextRequest) {
 
     console.log("[SERVER][v0] About to call reset_weekly_credits function")
 
+    // Parameter names must match the SQL function signature exactly:
+    // reset_weekly_credits(p_reset_type text, p_user_id uuid) returns integer
     const { data: resetResult, error: resetError } = await supabase.rpc("reset_weekly_credits", {
-      reset_type_param: "manual",
-      user_id_param: user.id,
+      p_reset_type: "manual",
+      p_user_id: user.id,
     })
 
     console.log("[SERVER][v0] Reset function result:", resetResult)
-    console.log("[SERVER][v0] Reset function error:", resetError)
 
     if (resetError) {
       console.log("[SERVER][v0] Reset function error details:", JSON.stringify(resetError, null, 2))
       return NextResponse.json({ error: "Failed to reset meal credits" }, { status: 500 })
     }
 
-    if (!resetResult.success) {
-      return NextResponse.json({ error: resetResult.message }, { status: 500 })
-    }
+    // The function returns the number of students affected (an integer),
+    // not an object, so read it directly.
+    const studentsUpdated = typeof resetResult === "number" ? resetResult : 0
 
-    console.log("[SERVER][v0] Meal credits reset successfully:", resetResult)
+    console.log("[SERVER][v0] Meal credits reset successfully. Students updated:", studentsUpdated)
 
     return NextResponse.json({
       success: true,
-      message: resetResult.message,
-      studentsUpdated: resetResult.students_affected,
+      message: `Reset weekly credits for ${studentsUpdated} student${studentsUpdated === 1 ? "" : "s"} on standard meal plans. Prepaid balances were not changed.`,
+      studentsUpdated,
     })
   } catch (error) {
     console.error("[SERVER][v0] Unexpected error in reset API:", error)
