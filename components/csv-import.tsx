@@ -14,6 +14,7 @@ interface ImportResult {
   message: string
   imported: number
   failed: number
+  skipped?: number
   groupsAssigned?: number
   errors: string[]
 }
@@ -153,6 +154,11 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
                     {importResult.groupsAssigned && importResult.groupsAssigned > 0 && (
                       <div className="text-sm text-blue-700">
                         ✓ Assigned to groups: {importResult.groupsAssigned} students
+                      </div>
+                    )}
+                    {importResult.skipped && importResult.skipped > 0 && (
+                      <div className="text-sm text-muted-foreground">
+                        ↷ Skipped (already existed): {importResult.skipped} students
                       </div>
                     )}
                     {importResult.failed > 0 && (

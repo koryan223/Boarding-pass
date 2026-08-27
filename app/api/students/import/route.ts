@@ -211,6 +211,51 @@ export async function POST(request: NextRequest) {
 
     const adminSupabase = createAdminClient()
 
+    // Skip students that already exist in the database (by UIN) instead of
+    // treating them as failures. This lets an admin re-upload a longer list
+    // that includes existing students and only add the new ones.
+    let skipped = 0
+    {
+      const allUINs = students.map((s) => s.UIN)
+      const existingUINs = new Set<string>()
+      const lookupBatchSize = 500
+      for (let i = 0; i < allUINs.length; i += lookupBatchSize) {
+        const uinBatch = allUINs.slice(i, i + lookupBatchSize)
+        const { data: existing, error: lookupError } = await adminSupabase
+          .from("students")
+          .select("uin")
+          .in("uin", uinBatch)
+        if (lookupError) {
+          console.error("[v0] Error looking up existing UINs:", lookupError.message)
+          continue
+        }
+        for (const row of existing || []) {
+          existingUINs.add(row.uin)
+        }
+      }
+
+      if (existingUINs.size > 0) {
+        const before = students.length
+        const remaining = students.filter((s) => !existingUINs.has(s.UIN))
+        skipped = before - remaining.length
+        students.length = 0
+        students.push(...remaining)
+        console.log(`[v0] Skipping ${skipped} students that already exist`)
+      }
+    }
+
+    if (students.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: `No new students to import (${skipped} already existed and were skipped)`,
+        imported: 0,
+        failed: 0,
+        skipped,
+        errors: errors.slice(0, 20),
+        totalErrors: errors.length,
+      })
+    }
+
     // Process base locations
     const locationNames = [...new Set(students.map((s) => s.base_location).filter((l): l is string => l !== null))]
     const locationMap = new Map<string, string>() // location name -> location id
@@ -330,15 +375,14 @@ export async function POST(request: NextRequest) {
               if (singleError) {
                 console.error("[v0] Insert error for UIN", student.UIN, ":", singleError.code, singleError.message)
                 if (singleError.code === "23505") {
-                  const msg = `UIN ${student.UIN} (${student.Fname} ${student.Lname}) already exists`
-                  errors.push(msg)
-                  failureDetails.push(msg)
+                  // Already exists (e.g. added between the pre-check and insert) — skip quietly.
+                  skipped++
                 } else {
                   const msg = `UIN ${student.UIN}: ${singleError.message}`
                   errors.push(msg)
                   failureDetails.push(msg)
+                  failed++
                 }
-                failed++
               } else {
                 imported++
                 if (studentToInsert.group_id) groupsAssigned++
@@ -369,10 +413,15 @@ export async function POST(request: NextRequest) {
             const { error: singleError } = await adminSupabase.from("students").insert(studentToInsert)
 
             if (singleError) {
-              failed++
-              const msg = `UIN ${student.UIN}: ${singleError.message}`
-              errors.push(msg)
-              failureDetails.push(msg)
+              if (singleError.code === "23505") {
+                // Already exists — skip quietly.
+                skipped++
+              } else {
+                failed++
+                const msg = `UIN ${student.UIN}: ${singleError.message}`
+                errors.push(msg)
+                failureDetails.push(msg)
+              }
             } else {
               imported++
               if (studentToInsert.group_id) groupsAssigned++
@@ -395,15 +444,17 @@ export async function POST(request: NextRequest) {
 
     const groupMessage = groupsAssigned > 0 ? `, ${groupsAssigned} assigned to groups` : ""
     const locationMessage = locationsAssigned > 0 ? `, ${locationsAssigned} assigned to locations` : ""
+    const skippedMessage = skipped > 0 ? `, ${skipped} skipped (already existed)` : ""
 
     return NextResponse.json({
       success: imported > 0,
       message:
         imported > 0
-          ? `Successfully imported ${imported} students${groupMessage}${locationMessage}${failed > 0 ? ` (${failed} failed)` : ""}`
-          : "No students were imported",
+          ? `Successfully imported ${imported} students${groupMessage}${locationMessage}${skippedMessage}${failed > 0 ? ` (${failed} failed)` : ""}`
+          : `No students were imported${skippedMessage}`,
       imported,
       failed,
+      skipped,
       groupsAssigned,
       locationsAssigned,
       errors: errors.slice(0, 20),
