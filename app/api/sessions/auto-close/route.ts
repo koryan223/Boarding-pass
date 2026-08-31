@@ -5,8 +5,12 @@ export async function POST() {
   try {
     const supabase = await createServerClient()
 
-    // Find sessions that have been open for more than 1 hour with no recent swipes
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    // Find sessions that have been open for more than 2 hours with no recent swipes.
+    // NOTE: The authoritative auto-close now runs server-side via the pg_cron job
+    // "auto-close-stale-sessions" (calls auto_close_stale_sessions() every 5 minutes),
+    // which works even when no browser is open. This route is a redundant client-side
+    // trigger kept in sync at the same 2-hour window.
+    const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
 
     // Get sessions that are still open
     const { data: openSessions, error: sessionsError } = await supabase
@@ -46,8 +50,8 @@ export async function POST() {
       // Determine the last activity time
       const lastActivityTime = recentSwipes && recentSwipes.length > 0 ? recentSwipes[0].swiped_at : session.started_at
 
-      // If last activity was more than 1 hour ago, mark for closure
-      if (lastActivityTime < oneHourAgo) {
+      // If last activity was more than 2 hours ago, mark for closure
+      if (lastActivityTime < cutoff) {
         sessionsToClose.push(session.id)
       }
     }
