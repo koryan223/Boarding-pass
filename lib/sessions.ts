@@ -169,22 +169,31 @@ export async function getUserSessions(): Promise<{ data: Session[] | null; error
       return { data: null, error: "User not authenticated" }
     }
 
-    const { data, error } = await supabase
+  const [{ data, error }, { data: accessibleIds, error: accessError }] = await Promise.all([
+    supabase
       .from("sessions")
       .select(`
-        *,
-        locations (
-          name
-        ),
-        meal_swipes (count)
-      `)
-      .order("started_at", { ascending: false })
-
-    if (error) {
-      return { data: null, error: error.message }
-    }
-
-    const sessionsWithLocation = data?.map((session: any) => ({
+  *,
+  locations (
+  name
+  ),
+  meal_swipes (count)
+  `)
+      .order("started_at", { ascending: false }),
+    supabase.rpc("my_accessible_location_ids"),
+  ])
+  
+  if (error) {
+  return { data: null, error: error.message }
+  }
+  if (accessError) {
+  return { data: null, error: accessError.message }
+  }
+  
+  const allowed = new Set<string>((accessibleIds ?? []) as string[])
+  const visible = (data ?? []).filter((session: any) => session.location_id && allowed.has(session.location_id))
+  
+  const sessionsWithLocation = visible.map((session: any) => ({
       ...session,
       location_name: session.locations?.name || null,
       swipe_count: session.meal_swipes?.[0]?.count || 0,
