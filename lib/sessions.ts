@@ -207,17 +207,22 @@ export async function getAllOpenSessions(): Promise<{ data: Session[] | null; er
       return { data: null, error: "User not authenticated" }
     }
 
-    const { data, error } = await supabase
-      .from("sessions")
-      .select("*")
-      .is("ended_at", null)
-      .order("started_at", { ascending: false })
+    const [{ data, error }, { data: accessibleIds, error: accessError }] = await Promise.all([
+      supabase.from("sessions").select("*").is("ended_at", null).order("started_at", { ascending: false }),
+      supabase.rpc("my_accessible_location_ids"),
+    ])
 
     if (error) {
       return { data: null, error: error.message }
     }
+    if (accessError) {
+      return { data: null, error: accessError.message }
+    }
 
-    return { data, error: null }
+    const allowed = new Set<string>((accessibleIds ?? []) as string[])
+    const joinable = (data ?? []).filter((session) => session.location_id && allowed.has(session.location_id))
+
+    return { data: joinable, error: null }
   } catch (error) {
     return { data: null, error: error instanceof Error ? error.message : "Unknown error" }
   }
@@ -240,11 +245,15 @@ export async function joinSession(sessionId: string): Promise<{ data: Session | 
       return { data: null, error: error.message }
     }
 
-    await supabase.from("session_resumes").insert({
+    const { error: joinError } = await supabase.from("session_resumes").insert({
       session_id: sessionId,
       user_id: user.id,
       resumed_at: new Date().toISOString(),
     })
+
+    if (joinError) {
+      return { data: null, error: joinError.message }
+    }
 
     return { data, error: null }
   } catch (error) {
