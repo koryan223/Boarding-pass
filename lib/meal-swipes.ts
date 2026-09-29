@@ -268,24 +268,37 @@ export async function processSwipe(
     return { success: false, message: "Insufficient credit", student: studentData }
   }
 
-  // Process successful swipe
+  // Deduct atomically in the database so overlapping swipes can't read the same
+  // balance and overwrite each other (which previously lost deductions).
+  let remainingCredits = studentData.weekly_credits
+  if (!isCountPlan) {
+    const { data: newBalance, error: updateError } = await supabase.rpc("decrement_student_credit", {
+      p_uin: studentUin,
+    })
+
+    if (updateError) {
+      return { success: false, message: "Failed to update credits" }
+    }
+
+    if (newBalance === null || newBalance === undefined) {
+      await supabase.from("meal_swipes").insert({
+        student_uin: studentUin,
+        session_id: sessionId,
+        swiped_by: user.id,
+        status: "insufficient_credits",
+      })
+      return { success: false, message: "Insufficient credit", student: studentData }
+    }
+
+    remainingCredits = newBalance as number
+  }
+
   await supabase.from("meal_swipes").insert({
     student_uin: studentUin,
     session_id: sessionId,
     swiped_by: user.id,
     status: "success",
   })
-
-  if (!isCountPlan) {
-    const { error: updateError } = await supabase
-      .from("students")
-      .update({ weekly_credits: studentData.weekly_credits - 1 })
-      .eq("uin", studentUin)
-
-    if (updateError) {
-      return { success: false, message: "Failed to update credits" }
-    }
-  }
 
   const startOfWeek = new Date()
   startOfWeek.setHours(0, 0, 0, 0)
@@ -316,7 +329,7 @@ export async function processSwipe(
   const studentForResponse = {
     ...studentData,
     photo_url: signedUrlOnSuccess,
-    weekly_credits: isCountPlan ? studentData.weekly_credits : studentData.weekly_credits - 1,
+    weekly_credits: remainingCredits,
     meal_plan_type: isCountPlan ? ("count" as const) : isPrepaidPlan ? ("prepaid" as const) : ("standard" as const),
   }
 
