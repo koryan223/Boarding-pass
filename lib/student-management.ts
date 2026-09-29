@@ -199,6 +199,13 @@ export async function updateStudent(id: string, updates: Partial<Student>): Prom
     finalUpdates.weekly_credits = 0
   }
 
+  if (
+    (finalUpdates.meal_plan_type === "standard" || finalUpdates.meal_plan_type === "prepaid") &&
+    (!Number.isInteger(finalUpdates.meal_plan) || (finalUpdates.meal_plan as number) < 1)
+  ) {
+    throw new Error("Standard and prepaid plans need a meal allowance of at least 1")
+  }
+
   // If switching to prepaid plan, set weekly_credits equal to meal_plan (total prepaid meals)
   // For prepaid plans, meal_plan represents total purchased meals, weekly_credits is remaining balance
   if (finalUpdates.meal_plan_type === "prepaid" && finalUpdates.meal_plan !== undefined) {

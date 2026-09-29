@@ -482,7 +482,8 @@ function PastSessions() {
                           </TableCell>
                           <TableCell className="font-mono">{swipe.student_uin}</TableCell>
                           <TableCell>
-                            {swipe.students?.meal_plan_type === "count" || swipe.students?.meal_plan === 0
+                            {swipe.students?.meal_plan_type === "count" ||
+                            (swipe.students?.meal_plan_type == null && swipe.students?.meal_plan === 0)
                               ? "Count Only"
                               : swipe.students?.meal_plan_type === "prepaid"
                                 ? `Prepaid: ${swipe.students?.meal_plan || 0}`

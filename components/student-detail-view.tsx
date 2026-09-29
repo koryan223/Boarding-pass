@@ -41,6 +41,7 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteReason, setDeleteReason] = useState("")
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
   const [editedStudent, setEditedStudent] = useState({
     first_name: student.first_name,
@@ -76,6 +77,18 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
   }, [])
 
   const handleSave = async () => {
+    if (
+      editedStudent.meal_plan_type !== "count" &&
+      (!Number.isInteger(editedStudent.meal_plan) || editedStudent.meal_plan < 1)
+    ) {
+      setSaveError(
+        editedStudent.meal_plan_type === "prepaid"
+          ? "Enter the total prepaid meals (at least 1)."
+          : "Enter the weekly meal allowance (at least 1).",
+      )
+      return
+    }
+    setSaveError(null)
     try {
       setIsSaving(true)
       const updated = await updateStudentClient(student.uin, editedStudent)
@@ -289,6 +302,11 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
                             ? "Fixed number of meals purchased, does not reset"
                             : "Just counts swipes, no credit limit"}
                       </p>
+                      {saveError && (
+                        <p role="alert" className="text-sm text-destructive mt-2">
+                          {saveError}
+                        </p>
+                      )}
                     </div>
                     {editedStudent.meal_plan_type === "standard" && (
                       <>
@@ -297,6 +315,8 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
                           <Input
                             id="meal_plan"
                             type="number"
+                            min="1"
+                            required
                             value={editedStudent.meal_plan}
                             onChange={(e) =>
                               setEditedStudent({ ...editedStudent, meal_plan: Number.parseInt(e.target.value) })

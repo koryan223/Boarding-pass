@@ -457,7 +457,8 @@ export default function ManageStudentsPage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Meal Plan:</span>
                       <span className="font-medium">
-                        {student.meal_plan_type === "count" || student.meal_plan === 0
+                        {student.meal_plan_type === "count" ||
+                        (student.meal_plan_type == null && student.meal_plan === 0)
                           ? "Count Only"
                           : student.meal_plan_type === "prepaid"
                             ? `Prepaid: ${student.meal_plan}`
