@@ -23,7 +23,7 @@ export async function GET() {
     const adminClient = createAdminClient()
     const { data: users, error } = await adminClient
       .from("user_roles")
-      .select("id, role, location_id, created_at, updated_at, locations(name)")
+      .select("id, role, location_id, created_at, updated_at, locations!user_roles_location_id_fkey(name)")
       .order("created_at", { ascending: false })
 
     if (error) {

@@ -18,7 +18,7 @@ export async function GET() {
   // Try new schema with location_id foreign key
   const { data: newSchemaData, error: newSchemaError } = await supabase
     .from("user_roles")
-    .select("role, location_id, locations(name)")
+    .select("role, location_id, locations!user_roles_location_id_fkey(name)")
     .eq("id", user.id)
     .single()
 
