@@ -43,6 +43,7 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
   const [deleteReason, setDeleteReason] = useState("")
   const [saveError, setSaveError] = useState<string | null>(null)
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([])
   const [editedStudent, setEditedStudent] = useState({
     first_name: student.first_name,
     last_name: student.last_name,
@@ -54,7 +55,17 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
       | "count"
       | "prepaid",
     base_location_id: student.base_location_id || null,
+    group_id: student.group_id || null,
   })
+
+  useEffect(() => {
+    fetch("/api/groups")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.groups)) setGroups(data.groups)
+      })
+      .catch((error) => console.error("Error fetching groups:", error))
+  }, [])
 
   useEffect(() => {
     const fetchLocations = async () => {
@@ -77,6 +88,10 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
   }, [])
 
   const handleSave = async () => {
+    if (!editedStudent.base_location_id) {
+      setSaveError("Select a base location before saving.")
+      return
+    }
     if (
       editedStudent.meal_plan_type !== "count" &&
       (!Number.isInteger(editedStudent.meal_plan) || editedStudent.meal_plan < 1)
@@ -96,7 +111,8 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
       setIsEditing(false)
       router.refresh()
     } catch (error) {
-      console.error("[v0] Error updating student:", error)
+      console.error("Error updating student:", error)
+      setSaveError(error instanceof Error ? error.message : "Failed to save changes.")
     } finally {
       setIsSaving(false)
     }
@@ -122,7 +138,9 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
       weekly_credits: student.weekly_credits ?? 0,
       meal_plan_type: student.meal_plan_type || "standard",
       base_location_id: student.base_location_id || null,
+      group_id: student.group_id || null,
     })
+    setSaveError(null)
     setIsEditing(false)
   }
 
@@ -256,17 +274,42 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
                       />
                     </div>
                     <div>
-                      <Label htmlFor="base_location">Base Location</Label>
+                      <Label htmlFor="group">Group</Label>
                       <Select
+                        value={editedStudent.group_id || "none"}
+                        onValueChange={(value) =>
+                          setEditedStudent({ ...editedStudent, group_id: value === "none" ? null : value })
+                        }
+                      >
+                        <SelectTrigger id="group">
+                          <SelectValue placeholder="Select group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Unassigned</SelectItem>
+                          {groups.map((group) => (
+                            <SelectItem key={group.id} value={group.id}>
+                              {group.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="base_location">
+                        Base Location <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        required
                         value={editedStudent.base_location_id || undefined}
                         onValueChange={(value) => {
+                          setSaveError(null)
                           setEditedStudent({
                             ...editedStudent,
                             base_location_id: value,
                           })
                         }}
                       >
-                        <SelectTrigger id="base_location">
+                        <SelectTrigger id="base_location" aria-required="true" aria-invalid={!editedStudent.base_location_id}>
                           <SelectValue placeholder="Select base location" />
                         </SelectTrigger>
                         <SelectContent>

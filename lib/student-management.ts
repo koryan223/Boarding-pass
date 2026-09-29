@@ -216,7 +216,7 @@ export async function updateStudent(id: string, updates: Partial<Student>): Prom
     .from("students")
     .update({ ...finalUpdates, updated_at: new Date().toISOString() })
     .eq("uin", id)
-    .select()
+    .select("*, groups(name)")
     .single()
 
   if (error) throw new Error("Failed to update student")
