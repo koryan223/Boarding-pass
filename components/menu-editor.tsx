@@ -171,7 +171,7 @@ export function MenuEditor() {
 
   const fetchLocations = async () => {
     try {
-      const response = await fetch("/api/locations")
+      const response = await fetch("/api/locations?accessible=1")
       if (response.ok) {
         const data = await response.json()
         const locationsList = data.locations || data || []

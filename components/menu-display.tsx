@@ -112,14 +112,11 @@ export function MenuDisplay() {
   const isMountedRef = useRef(true)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Only admins and staff (who manage menus) may switch locations.
-  // Dining station users stay pinned to their assigned base location.
-  const canSwitchLocation = role === "admin" || role === "staff"
+  // The list only contains locations the user has been granted, so anyone with
+  // more than one accessible location can switch between them.
+  const canSwitchLocation = locations.length > 1
 
-  // The location name currently being displayed (derived from the selection for switchers).
-  const currentLocationName = canSwitchLocation
-    ? locations.find((l) => l.id === selectedLocationId)?.name || locationName
-    : locationName
+  const currentLocationName = locations.find((l) => l.id === selectedLocationId)?.name || locationName
 
   // Get dates for the current displayed week
   const getWeekDates = useCallback(() => {
@@ -180,26 +177,26 @@ export function MenuDisplay() {
 
       setRole(userData.role || null)
       setLocationName(userData.location_name || null)
-      setSelectedLocationId(userData.location_id || null)
 
-      if (userData.role === "admin" || userData.role === "staff") {
-        try {
-          const locRes = await fetch("/api/locations")
-          if (locRes.ok && isMountedRef.current) {
-            const locData = await locRes.json()
-            const list: Location[] = (locData.locations || locData || []).filter(
-              (l: Location) => l.name.toLowerCase() !== "unassigned",
-            )
-            setLocations(list)
-            // Fall back to the first location if the user has no base location assigned.
-            if (!userData.location_id && list.length > 0) {
-              setSelectedLocationId(list[0].id)
-            }
+      let initialLocationId: string | null = userData.location_id || null
+      try {
+        const locRes = await fetch("/api/locations?accessible=1")
+        if (locRes.ok && isMountedRef.current) {
+          const locData = await locRes.json()
+          const list: Location[] = (locData.locations || locData || []).filter(
+            (l: Location) => l.name.toLowerCase() !== "unassigned",
+          )
+          setLocations(list)
+          // Default to the base location only if it's one the user can access.
+          if (!list.some((l) => l.id === initialLocationId)) {
+            initialLocationId = list[0]?.id ?? null
+            setLocationName(list[0]?.name ?? null)
           }
-        } catch {
-          // Non-fatal: without the list the user simply cannot switch locations.
         }
+      } catch {
+        // Non-fatal: fall back to the base location without a switcher.
       }
+      if (isMountedRef.current) setSelectedLocationId(initialLocationId)
 
       if (isMountedRef.current) setUserLoaded(true)
     } catch (err) {

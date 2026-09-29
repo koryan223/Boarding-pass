@@ -1,5 +1,6 @@
 import { createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { canAccessLocation, getAllowedLocationIds } from "@/lib/location-access"
 
 // Helper to get Monday of a week from a date string (YYYY-MM-DD)
 function getMonday(dateStr: string): string {
@@ -37,15 +38,22 @@ export async function GET(request: Request) {
     const locationId = searchParams.get("location_id")
     const weekDate = searchParams.get("week_start_date") || getCurrentWeekMonday()
 
-    // Get the user's location if not provided
-    let effectiveLocationId = locationId
-    if (!effectiveLocationId) {
-      const { data: roleData } = await supabase.from("user_roles").select("location_id").eq("id", user.id).single()
-      effectiveLocationId = roleData?.location_id || null
-    }
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role, location_id")
+      .eq("id", user.id)
+      .single()
+
+    const effectiveLocationId = locationId || roleData?.location_id || null
 
     if (!effectiveLocationId) {
       return NextResponse.json([])
+    }
+
+    const allowed = await getAllowedLocationIds(user.id, roleData?.role)
+    if (!canAccessLocation(allowed, effectiveLocationId)) {
+      if (!locationId) return NextResponse.json([])
+      return NextResponse.json({ error: "You do not have access to this location" }, { status: 403 })
     }
 
     console.log("[v0] Menu GET - location_id:", effectiveLocationId, "week_start_date:", weekDate)
@@ -92,6 +100,11 @@ export async function PUT(request: Request) {
 
   if (!day_of_week || !meal_type || !week_start_date) {
     return NextResponse.json({ error: "day_of_week, meal_type, and week_start_date are required" }, { status: 400 })
+  }
+
+  const allowed = await getAllowedLocationIds(user.id, roleData.role)
+  if (!canAccessLocation(allowed, location_id)) {
+    return NextResponse.json({ error: "You do not have access to this location" }, { status: 403 })
   }
 
   // Try to update existing record
@@ -171,6 +184,11 @@ export async function POST(request: Request) {
 
   if (!week_start_date) {
     return NextResponse.json({ error: "week_start_date is required" }, { status: 400 })
+  }
+
+  const allowed = await getAllowedLocationIds(user.id, roleData.role)
+  if (!canAccessLocation(allowed, location_id)) {
+    return NextResponse.json({ error: "You do not have access to this location" }, { status: 403 })
   }
 
   const menuRecords = menus.map((menu: { day_of_week: string; meal_type: string; menu_items: string }) => ({
