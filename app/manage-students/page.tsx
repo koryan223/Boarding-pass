@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +27,12 @@ import { CsvImport } from "@/components/csv-import"
 import { MassPhotoUpload } from "@/components/mass-photo-upload"
 import { AddStudentForm } from "@/components/add-student-form"
 import { StudentPhoto } from "@/components/student-photo"
+import {
+  StudentFilters,
+  applyStudentFilters,
+  DEFAULT_STUDENT_FILTERS,
+  type StudentFilterState,
+} from "@/components/student-filters"
 
 export default function ManageStudentsPage() {
   const router = useRouter()
@@ -40,6 +46,17 @@ export default function ManageStudentsPage() {
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<"cards" | "thumbnails">("cards")
+  const [filters, setFilters] = useState<StudentFilterState>(DEFAULT_STUDENT_FILTERS)
+
+  const filteredStudents = useMemo(() => applyStudentFilters(students, filters), [students, filters])
+  const isFiltered = filteredStudents.length !== students.length
+  const allFilteredSelected =
+    filteredStudents.length > 0 && filteredStudents.every((s) => selectedStudents.has(s.uin))
+
+  const handleFiltersChange = (next: StudentFilterState) => {
+    setFilters(next)
+    setSelectedStudents(new Set())
+  }
 
   const handleBackClick = () => {
     const backUrl = userRole === "admin" ? "/admin" : "/dashboard"
@@ -108,10 +125,10 @@ export default function ManageStudentsPage() {
   }
 
   const handleSelectAll = () => {
-    if (selectedStudents.size === students.length) {
+    if (allFilteredSelected) {
       setSelectedStudents(new Set())
     } else {
-      setSelectedStudents(new Set(students.map((s) => s.uin)))
+      setSelectedStudents(new Set(filteredStudents.map((s) => s.uin)))
     }
   }
 
@@ -238,7 +255,7 @@ export default function ManageStudentsPage() {
             </div>
             <Badge variant="secondary" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
-              {students.length} Students
+              {isFiltered ? `${filteredStudents.length} of ${students.length}` : students.length} Students
             </Badge>
           </div>
         </div>
@@ -266,6 +283,9 @@ export default function ManageStudentsPage() {
                 className="pl-10"
               />
             </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <StudentFilters filters={filters} onChange={handleFiltersChange} />
+            </div>
           </CardContent>
         </Card>
 
@@ -280,12 +300,8 @@ export default function ManageStudentsPage() {
                     onClick={handleSelectAll}
                     className="flex items-center gap-2 bg-transparent"
                   >
-                    {selectedStudents.size === students.length ? (
-                      <CheckSquare className="h-4 w-4" />
-                    ) : (
-                      <Square className="h-4 w-4" />
-                    )}
-                    {selectedStudents.size === students.length ? "Deselect All" : "Select All"}
+                    {allFilteredSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    {allFilteredSelected ? "Deselect All" : isFiltered ? "Select All Filtered" : "Select All"}
                   </Button>
                   {selectedStudents.size > 0 && <Badge variant="secondary">{selectedStudents.size} selected</Badge>}
                 </div>
@@ -357,19 +373,23 @@ export default function ManageStudentsPage() {
               <p className="text-muted-foreground">Loading students...</p>
             </div>
           </div>
-        ) : students.length === 0 ? (
+        ) : filteredStudents.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No students found</h3>
               <p className="text-muted-foreground">
-                {searchQuery ? "Try adjusting your search terms." : "No students are currently registered."}
+                {isFiltered
+                  ? "No students match the selected filters."
+                  : searchQuery
+                    ? "Try adjusting your search terms."
+                    : "No students are currently registered."}
               </p>
             </CardContent>
           </Card>
         ) : viewMode === "thumbnails" ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {students.map((student) => (
+            {filteredStudents.map((student) => (
               <Card
                 key={student.uin}
                 className={`group relative cursor-pointer overflow-hidden transition-all hover:shadow-md hover:scale-[1.02] ${
@@ -407,7 +427,7 @@ export default function ManageStudentsPage() {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {students.map((student) => (
+            {filteredStudents.map((student) => (
               <Card
                 key={student.uin}
                 className="cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] relative"
