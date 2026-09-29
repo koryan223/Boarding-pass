@@ -272,7 +272,11 @@ export async function processSwipe(
 
     studentData.photo_url = signedUrl
 
-    return { success: false, message: "Insufficient credit", student: studentData }
+    return {
+      success: false,
+      message: `Insufficient credit: ${studentData.weekly_credits} of ${studentData.meal_plan} left`,
+      student: studentData,
+    }
   }
 
   // Deduct atomically in the database so overlapping swipes can't read the same
@@ -288,13 +292,34 @@ export async function processSwipe(
     }
 
     if (newBalance === null || newBalance === undefined) {
+      // The balance read above is stale here; report the real one so the screen
+      // never shows "credits left" next to a rejection.
+      const { data: current } = await supabase
+        .from("students")
+        .select("weekly_credits, meal_plan")
+        .eq("uin", studentUin)
+        .maybeSingle()
+      const actualCredits = current?.weekly_credits ?? 0
+
+      if (actualCredits > 0) {
+        console.error("[SERVER] Credit decrement matched no row despite a positive balance", {
+          studentUin,
+          actualCredits,
+        })
+        return { success: false, message: "Could not deduct credit, please swipe again", student: studentData }
+      }
+
       await supabase.from("meal_swipes").insert({
         student_uin: studentUin,
         session_id: sessionId,
         swiped_by: user.id,
         status: "insufficient_credits",
       })
-      return { success: false, message: "Insufficient credit", student: studentData }
+      return {
+        success: false,
+        message: `Insufficient credit: 0 of ${current?.meal_plan ?? studentData.meal_plan} left`,
+        student: { ...studentData, weekly_credits: actualCredits },
+      }
     }
 
     remainingCredits = newBalance as number
