@@ -33,6 +33,14 @@ export async function GET() {
 
     console.log("[v0] Fetched users from database:", users?.length || 0)
 
+    const { data: accessRows } = await adminClient.from("user_location_access").select("user_id, location_id")
+    const accessByUser = new Map<string, string[]>()
+    for (const row of accessRows || []) {
+      const list = accessByUser.get(row.user_id) || []
+      list.push(row.location_id)
+      accessByUser.set(row.user_id, list)
+    }
+
     // Get user emails from auth.users using admin client
     const usersWithEmails = await Promise.all(
       users.map(async (user: any) => {
@@ -43,6 +51,7 @@ export async function GET() {
           role: user.role,
           location_id: user.location_id,
           location_name: user.locations?.name || null,
+          access_location_ids: accessByUser.get(user.id) || [],
           created_at: user.created_at,
           updated_at: user.updated_at,
         }

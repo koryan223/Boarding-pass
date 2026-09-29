@@ -115,8 +115,8 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
           Import Students from CSV
         </CardTitle>
         <CardDescription>
-          Upload a CSV file with columns: UIN, Fname, Lname, room_number, meal_plan, meal_plan_type (optional), group
-          (optional), base_location (optional)
+          Upload a CSV file with columns: UIN, Fname, Lname, room_number, meal_plan, base_location, meal_plan_type
+          (optional), group (optional)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -189,9 +189,10 @@ export function CsvImport({ onImportComplete }: CsvImportProps) {
               <div className="font-medium mb-1">CSV Format Requirements:</div>
               <ul className="text-sm space-y-1">
                 <li>
-                  • Header row: UIN, Fname, Lname, room_number, meal_plan, meal_plan_type (optional), group (optional),
-                  base_location (optional)
+                  • Header row: UIN, Fname, Lname, room_number, meal_plan, base_location, meal_plan_type (optional),
+                  group (optional)
                 </li>
+                <li>• base_location: required for every student (must match an existing location name)</li>
                 <li>• UIN: 2-9 digit number</li>
                 <li>• Room number: any letters and/or numbers, any length (e.g., 123A, A12, 4B217) or leave empty for N/A</li>
                 <li>• Meal plan: Number of swipes/credits (positive number). Leave empty or 0 for a count-only plan</li>

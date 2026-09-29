@@ -15,8 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Plus, MapPin } from "lucide-react"
+import { Loader2, Plus, MapPin, ChevronDown } from "lucide-react"
+
+const ACCESS_ROLES = ["staff", "dining_station"]
 
 interface User {
   id: string
@@ -24,6 +28,7 @@ interface User {
   role: "admin" | "staff" | "dining_station" | "pending"
   location_id: string | null
   location_name: string | null
+  access_location_ids: string[]
   created_at: string
   updated_at: string
 }
@@ -57,6 +62,7 @@ export function UserManagement() {
   const [newLocationName, setNewLocationName] = useState("")
   const [isCreatingLocation, setIsCreatingLocation] = useState(false)
   const [pendingLocationUserId, setPendingLocationUserId] = useState<string | null>(null)
+  const [togglingAccessKey, setTogglingAccessKey] = useState<string | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -189,6 +195,45 @@ export function UserManagement() {
     }
   }
 
+  const handleAccessToggle = async (userId: string, locationId: string, enabled: boolean) => {
+    const toggleKey = `${userId}:${locationId}`
+    setTogglingAccessKey(toggleKey)
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/location-access`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location_id: locationId, enabled }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to update location access")
+      }
+
+      const data = await response.json()
+      setUsers((prev) =>
+        prev.map((user) => (user.id === userId ? { ...user, access_location_ids: data.access_location_ids } : user)),
+      )
+    } catch (error: any) {
+      console.error("[v0] Error updating location access:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update location access",
+        variant: "destructive",
+      })
+    } finally {
+      setTogglingAccessKey(null)
+    }
+  }
+
+  const accessSummary = (user: User) => {
+    const ids = user.access_location_ids || []
+    if (ids.length === 0) return "No locations"
+    if (ids.length === locations.length && locations.length > 0) return "All locations"
+    const names = locations.filter((loc) => ids.includes(loc.id)).map((loc) => loc.name)
+    return names.length <= 2 ? names.join(", ") : `${names.length} locations`
+  }
+
   const handleCreateLocation = async () => {
     if (!newLocationName.trim()) return
 
@@ -260,6 +305,7 @@ export function UserManagement() {
                   <TableHead>Current Role</TableHead>
                   <TableHead>Change Role</TableHead>
                   <TableHead>Base Location</TableHead>
+                  <TableHead>Location Access</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Last Updated</TableHead>
                 </TableRow>
@@ -315,6 +361,59 @@ export function UserManagement() {
                           </SelectItem>
                         </SelectContent>
                       </Select>
+                    </TableCell>
+                    <TableCell>
+                      {ACCESS_ROLES.includes(user.role) ? (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className="w-[200px] justify-between font-normal">
+                              <span className="truncate">{accessSummary(user)}</span>
+                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64 p-2" align="start">
+                            <p className="px-2 pb-2 text-xs text-muted-foreground">
+                              {user.role === "staff"
+                                ? "Staff can view, edit, and swipe students from checked locations."
+                                : "Dining station can swipe students from checked locations."}
+                            </p>
+                            {locations.length === 0 ? (
+                              <p className="px-2 py-1 text-sm text-muted-foreground">No locations yet</p>
+                            ) : (
+                              <ul className="flex flex-col">
+                                {locations.map((location) => {
+                                  const checked = (user.access_location_ids || []).includes(location.id)
+                                  const busy = togglingAccessKey === `${user.id}:${location.id}`
+                                  const checkboxId = `access-${user.id}-${location.id}`
+                                  return (
+                                    <li key={location.id}>
+                                      <label
+                                        htmlFor={checkboxId}
+                                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                                      >
+                                        <Checkbox
+                                          id={checkboxId}
+                                          checked={checked}
+                                          disabled={busy}
+                                          onCheckedChange={(value) =>
+                                            handleAccessToggle(user.id, location.id, value === true)
+                                          }
+                                        />
+                                        <span className="flex-1">{location.name}</span>
+                                        {busy && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                                      </label>
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          {user.role === "admin" ? "All locations" : "—"}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>{new Date(user.updated_at).toLocaleDateString()}</TableCell>

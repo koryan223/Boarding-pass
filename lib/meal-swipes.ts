@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { Student } from "./student-management"
+import { canAccessLocation, getAllowedLocationIds } from "./location-access"
 
 export interface MealSwipe {
   id: string
@@ -156,6 +157,12 @@ export async function processSwipe(
     return { success: false, message: "Student not found" }
   }
 
+  const { data: swiperRole } = await supabase.from("user_roles").select("role").eq("id", user.id).single()
+  const allowedLocations = await getAllowedLocationIds(user.id, swiperRole?.role)
+  if (!canAccessLocation(allowedLocations, studentData.base_location_id)) {
+    return { success: false, message: "Student is not assigned to a location you can serve" }
+  }
+
   const isCountPlan =
     studentData.meal_plan_type === "count" || (studentData.meal_plan_type == null && studentData.meal_plan === 0)
   const isPrepaidPlan = studentData.meal_plan_type === "prepaid"
@@ -188,7 +195,7 @@ export async function processSwipe(
       console.error("[SERVER][v0] Error checking recent swipes:", recentSwipeError)
     }
 
-    isReentry = recentSwipes && recentSwipes.length > 0
+    isReentry = !!recentSwipes && recentSwipes.length > 0
     console.log("[SERVER][v0] Is re-entry:", isReentry, "Recent swipes:", recentSwipes?.length || 0)
   }
 

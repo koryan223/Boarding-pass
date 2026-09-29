@@ -245,19 +245,18 @@ export function StudentDetailView({ student: initialStudent, user, userRole }: S
                     <div>
                       <Label htmlFor="base_location">Base Location</Label>
                       <Select
-                        value={editedStudent.base_location_id || "unassigned"}
+                        value={editedStudent.base_location_id || undefined}
                         onValueChange={(value) => {
                           setEditedStudent({
                             ...editedStudent,
-                            base_location_id: value === "unassigned" ? null : value,
+                            base_location_id: value,
                           })
                         }}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="base_location">
                           <SelectValue placeholder="Select base location" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
                           {locations.map((location) => (
                             <SelectItem key={location.id} value={location.id}>
                               {location.name}

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { canAccessLocation, getAllowedLocationIds } from "@/lib/location-access"
 
 type MealPlanType = "standard" | "count" | "prepaid"
 
@@ -49,6 +50,8 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] User authorized for import:", userRole.role)
 
+    const allowedLocations = await getAllowedLocationIds(user.id, userRole.role)
+
     // Parse form data
     const formData = await request.formData()
     const file = formData.get("file") as File
@@ -80,14 +83,14 @@ export async function POST(request: NextRequest) {
       .split(",")
       .map((col) => col.trim().replace(/^\uFEFF/, "").replace(/"/g, ""))
     const normalizedHeader = header.map((col) => col.toLowerCase())
-    const requiredColumns = ["uin", "fname", "lname", "room_number", "meal_plan"]
+    const requiredColumns = ["uin", "fname", "lname", "room_number", "meal_plan", "base_location"]
 
     // Validate header - only required columns (case-insensitive)
     const missingColumns = requiredColumns.filter((col) => !normalizedHeader.includes(col))
     if (missingColumns.length > 0) {
       return NextResponse.json(
         {
-          error: `Missing required columns: ${missingColumns.join(", ")}. Expected: ${requiredColumns.join(", ")} (group and base_location columns are optional)`,
+          error: `Missing required columns: ${missingColumns.join(", ")}. Expected: ${requiredColumns.join(", ")} (meal_plan_type and group columns are optional)`,
         },
         { status: 400 },
       )
@@ -140,6 +143,11 @@ export async function POST(request: NextRequest) {
 
       if (!fname || !lname) {
         errors.push(`Row ${i + 1}: First name and last name are required`)
+        continue
+      }
+
+      if (!baseLocation || baseLocation.trim() === "") {
+        errors.push(`Row ${i + 1}: Base location is required`)
         continue
       }
 
@@ -274,8 +282,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Create missing locations instead of skipping them
+      // Create missing locations instead of skipping them (admins only; staff can't create locations)
       for (const locationName of locationNames) {
+        if (!locationMap.has(locationName.toLowerCase()) && allowedLocations !== null) {
+          errors.push(`Location "${locationName}" does not exist (only admins can create new locations)`)
+          continue
+        }
         if (!locationMap.has(locationName.toLowerCase())) {
           console.log("[v0] Creating new location:", locationName)
           const { data: newLocation, error: createError } = await adminSupabase
@@ -328,8 +340,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let imported = 0
     let failed = 0
+
+    // Every student needs a resolvable base location the importer is allowed to manage.
+    {
+      const permitted = students.filter((s) => {
+        const locationId = s.base_location ? locationMap.get(s.base_location.toLowerCase()) : undefined
+        if (!locationId) {
+          errors.push(`UIN ${s.UIN}: Base location "${s.base_location}" could not be resolved`)
+          failed++
+          return false
+        }
+        if (!canAccessLocation(allowedLocations, locationId)) {
+          errors.push(`UIN ${s.UIN}: You don't have access to base location "${s.base_location}"`)
+          failed++
+          return false
+        }
+        return true
+      })
+      students.length = 0
+      students.push(...permitted)
+    }
+
+    let imported = 0
     let groupsAssigned = 0
     let locationsAssigned = 0
     const failureDetails: string[] = []

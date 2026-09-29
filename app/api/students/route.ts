@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getAllStudents, searchStudents } from "@/lib/student-management"
+import { canAccessLocation, getAllowedLocationIds } from "@/lib/location-access"
 
 function safeStringify(obj: any): string {
   try {
@@ -111,6 +112,11 @@ export async function GET(request: NextRequest) {
       students = await getAllStudents()
     }
 
+    const allowed = await getAllowedLocationIds(user.id, userRole)
+    if (allowed !== null) {
+      students = students.filter((s: any) => canAccessLocation(allowed, s.base_location_id))
+    }
+
     console.log("[v0] Found students:", students.length)
     return NextResponse.json({ students })
   } catch (error) {
@@ -165,6 +171,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "UIN must be 2-9 digits" }, { status: 400 })
     }
 
+    if (!base_location_id || typeof base_location_id !== "string") {
+      return NextResponse.json({ error: "Base location is required" }, { status: 400 })
+    }
+
+    const allowed = await getAllowedLocationIds(user.id, userRole)
+    if (!canAccessLocation(allowed, base_location_id)) {
+      return NextResponse.json({ error: "You don't have access to that base location" }, { status: 403 })
+    }
+
     if (!["standard", "count", "prepaid"].includes(meal_plan_type)) {
       return NextResponse.json({ error: "Invalid meal plan type" }, { status: 400 })
     }
@@ -201,7 +216,7 @@ export async function POST(request: NextRequest) {
         meal_plan_type: meal_plan_type,
         photo_url: "/placeholder.svg?height=150&width=150",
         group_id: group_id || null,
-        base_location_id: base_location_id || null,
+        base_location_id,
       })
       .select()
       .single()

@@ -41,6 +41,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Failed to update user location" }, { status: 500 })
     }
 
+    // A user's own base location is always checked in their location access.
+    if (location_id) {
+      await adminClient
+        .from("user_location_access")
+        .upsert({ user_id: id, location_id }, { onConflict: "user_id,location_id", ignoreDuplicates: true })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Error in location update API:", error)

@@ -183,6 +183,10 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
       }
     }
 
+    if (!formData.baseLocationId) {
+      newErrors.baseLocationId = "Base location is required"
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -443,18 +447,22 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="baseLocation">Base Location (Optional)</Label>
+            <Label htmlFor="baseLocation">Base Location *</Label>
             <Select
-              value={formData.baseLocationId || "none"}
+              required
+              value={formData.baseLocationId || undefined}
               onValueChange={(value) => {
-                setFormData((prev) => ({ ...prev, baseLocationId: value === "none" ? "" : value }))
+                setFormData((prev) => ({ ...prev, baseLocationId: value }))
+                setErrors((prev) => {
+                  const { baseLocationId: _removed, ...rest } = prev
+                  return rest
+                })
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger id="baseLocation" aria-invalid={!!errors.baseLocationId}>
                 <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select a base location"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Unassigned</SelectItem>
                 {locations.map((location) => (
                   <SelectItem key={location.id} value={location.id}>
                     <div className="flex items-center gap-2">
@@ -465,7 +473,11 @@ export function AddStudentForm({ onStudentAdded }: AddStudentFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">The student&apos;s primary dining location</p>
+            {errors.baseLocationId ? (
+              <p className="text-sm text-destructive">{errors.baseLocationId}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">The student&apos;s primary dining location</p>
+            )}
           </div>
 
           <div className="space-y-2">
