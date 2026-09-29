@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAllowedLocationIds } from "@/lib/location-access"
 
-// GET all locations
-export async function GET() {
+// GET all locations. Pass `?accessible=1` to limit the list to locations the
+// current user has been granted (admins still receive every location).
+export async function GET(request: Request) {
   try {
     const supabase = await createServerClient()
 
@@ -15,10 +17,22 @@ export async function GET() {
     }
 
     const adminClient = createAdminClient()
-    const { data: locations, error } = await adminClient
-      .from("locations")
-      .select("*")
-      .order("name", { ascending: true })
+    const onlyAccessible = new URL(request.url).searchParams.get("accessible") === "1"
+
+    let query = adminClient.from("locations").select("*").order("name", { ascending: true })
+
+    if (onlyAccessible) {
+      const { data: roleData } = await adminClient.from("user_roles").select("role").eq("id", user.id).single()
+      const allowed = await getAllowedLocationIds(user.id, roleData?.role)
+      if (allowed !== null) {
+        if (allowed.length === 0) {
+          return NextResponse.json({ success: true, locations: [] })
+        }
+        query = query.in("id", allowed)
+      }
+    }
+
+    const { data: locations, error } = await query
 
     if (error) {
       console.error("[v0] Error fetching locations:", error)

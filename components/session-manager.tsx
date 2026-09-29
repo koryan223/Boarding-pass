@@ -75,13 +75,10 @@ export function SessionManager() {
 
   const fetchLocations = async () => {
     try {
-      console.log("[v0] Fetching locations...")
-      const response = await fetch("/api/locations")
+      const response = await fetch("/api/locations?accessible=1")
       const result = await response.json()
-      console.log("[v0] Locations response:", result)
       if (result.success) {
         setLocations(result.locations || [])
-        console.log("[v0] Loaded locations:", result.locations?.length || 0)
       } else {
         console.error("[v0] Failed to fetch locations:", result.error)
       }
