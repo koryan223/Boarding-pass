@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -47,6 +48,15 @@ export default function ManageStudentsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<"cards" | "thumbnails">("cards")
   const [filters, setFilters] = useState<StudentFilterState>(DEFAULT_STUDENT_FILTERS)
+
+  const { data: locationData } = useSWR<{ locations: { id: string; name: string }[] }>(
+    "/api/locations?accessible=1",
+    (url: string) => fetch(url).then((res) => (res.ok ? res.json() : { locations: [] })),
+  )
+  const locationNames = useMemo(
+    () => new Map((locationData?.locations ?? []).map((location) => [location.id, location.name])),
+    [locationData],
+  )
 
   const filteredStudents = useMemo(() => applyStudentFilters(students, filters), [students, filters])
   const isFiltered = filteredStudents.length !== students.length
@@ -420,6 +430,13 @@ export default function ManageStudentsPage() {
                     </p>
                     <p className="truncate text-xs text-muted-foreground">UIN: {student.uin}</p>
                     <p className="mt-1 truncate text-xs text-muted-foreground">Room: {student.room_number || "N/A"}</p>
+                    <p
+                      className={`truncate text-xs ${student.base_location_id ? "text-muted-foreground" : "text-destructive"}`}
+                    >
+                      {student.base_location_id
+                        ? (locationNames.get(student.base_location_id) ?? "—")
+                        : "No base location"}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -472,6 +489,14 @@ export default function ManageStudentsPage() {
                         </Badge>
                       ) : (
                         <span className="font-medium text-muted-foreground">Unassigned</span>
+                      )}
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Base Location:</span>
+                      {student.base_location_id ? (
+                        <span className="font-medium">{locationNames.get(student.base_location_id) ?? "—"}</span>
+                      ) : (
+                        <span className="font-medium text-destructive">None</span>
                       )}
                     </div>
                     <div className="flex justify-between text-sm">
