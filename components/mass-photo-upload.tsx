@@ -39,6 +39,30 @@ interface FilePreview {
   preview?: string
 }
 
+// Vercel rejects request bodies over 4.5MB, so photos are sent in batches below that limit.
+const MAX_FILE_BYTES = 4 * 1024 * 1024
+const MAX_BATCH_BYTES = 3.5 * 1024 * 1024
+const MAX_BATCH_FILES = 15
+
+function buildBatches(files: FilePreview[]): FilePreview[][] {
+  const batches: FilePreview[][] = []
+  let current: FilePreview[] = []
+  let currentBytes = 0
+
+  for (const entry of files) {
+    const size = entry.file.size
+    if (current.length > 0 && (currentBytes + size > MAX_BATCH_BYTES || current.length >= MAX_BATCH_FILES)) {
+      batches.push(current)
+      current = []
+      currentBytes = 0
+    }
+    current.push(entry)
+    currentBytes += size
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
 export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<MassUploadResult | null>(null)
@@ -91,33 +115,78 @@ export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
     setActiveTab("progress")
 
     try {
-      const formData = new FormData()
-      selectedFiles.forEach(({ file }) => {
-        formData.append("photos", file)
-      })
+      const results: PhotoProcessingResult[] = []
+      const uploadable: FilePreview[] = []
 
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => Math.min(prev + Math.random() * 10, 90))
-      }, 200)
-
-      const response = await fetch("/api/photos/mass-upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      clearInterval(progressInterval)
-      setProgress(100)
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || "Mass upload failed")
+      for (const entry of selectedFiles) {
+        if (!entry.validation.isValid) {
+          results.push({
+            filename: entry.file.name,
+            uin: entry.uin,
+            status: "failed",
+            message: entry.validation.issues.join(", ") || "Invalid filename",
+          })
+        } else if (entry.file.size > MAX_FILE_BYTES) {
+          results.push({
+            filename: entry.file.name,
+            uin: entry.uin,
+            status: "failed",
+            message: "File too large (max 4MB)",
+          })
+        } else {
+          uploadable.push(entry)
+        }
       }
 
-      setUploadResult(result)
+      const batches = buildBatches(uploadable)
+      let done = 0
+
+      for (const batch of batches) {
+        setCurrentFile(`${batch[0].file.name}${batch.length > 1 ? ` and ${batch.length - 1} more` : ""}`)
+        const formData = new FormData()
+        batch.forEach(({ file }) => formData.append("photos", file))
+
+        try {
+          const response = await fetch("/api/photos/mass-upload", { method: "POST", body: formData })
+          const text = await response.text()
+          let body: Partial<MassUploadResult> & { error?: string } = {}
+          try {
+            body = JSON.parse(text)
+          } catch {
+            throw new Error(
+              response.status === 413 ? "Batch too large for the server" : text.slice(0, 80) || `HTTP ${response.status}`,
+            )
+          }
+          if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+          results.push(...(body.results ?? []))
+        } catch (batchError) {
+          const message = batchError instanceof Error ? batchError.message : "Upload failed"
+          batch.forEach(({ file, uin }) => results.push({ filename: file.name, uin, status: "failed", message }))
+        }
+
+        done += batch.length
+        setProgress(Math.round((done / uploadable.length) * 100))
+      }
+
+      setProgress(100)
+
+      const successful = results.filter((r) => r.status === "success").length
+      const failed = results.length - successful
+
+      setUploadResult({
+        success: successful > 0,
+        message:
+          successful > 0
+            ? `Successfully uploaded ${successful} photos${failed > 0 ? ` (${failed} not uploaded)` : ""}`
+            : "No photos were uploaded successfully",
+        processed: results.length,
+        successful,
+        failed,
+        results: [...results].sort((a, b) => Number(a.status === "success") - Number(b.status === "success")),
+      })
       setActiveTab("results")
 
-      if (result.success && result.successful > 0) {
+      if (successful > 0) {
         onUploadComplete()
       }
     } catch (error) {
@@ -229,7 +298,7 @@ export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
                 <ul className="text-sm space-y-1">
                   <li>• Name photos with the student's UIN (e.g., "12345.jpg" or "12.jpg")</li>
                   <li>• Supported formats: JPEG, PNG, WebP</li>
-                  <li>• Maximum file size: 5MB per photo</li>
+                  <li>• Maximum file size: 4MB per photo</li>
                   <li>• Existing photos will be replaced automatically</li>
                   <li>• Photos for non-existent students will be skipped</li>
                 </ul>

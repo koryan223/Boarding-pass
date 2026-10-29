@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth-server"
 import { createServerClient } from "@/lib/supabase/server"
@@ -97,12 +98,12 @@ async function processPhoto(
       }
     }
 
-    if (photo.size > 5 * 1024 * 1024) {
+    if (photo.size > 4 * 1024 * 1024) {
       return {
         filename: photo.name,
         uin: "unknown",
         status: "failed",
-        message: "File too large (max 5MB)",
+        message: "File too large (max 4MB)",
       }
     }
 
@@ -128,17 +129,9 @@ async function processPhoto(
       }
     }
 
-    if (student.photo_url && !student.photo_url.includes("/placeholder.svg")) {
-      try {
-        await adminSupabase.storage.from("student-photos").remove([student.photo_url])
-      } catch (error) {
-        console.log(`[v0] Could not remove existing photo for ${match.uin}:`, error)
-        // Continue with upload even if removal fails
-      }
-    }
-
+    const previousPhoto: string | null = student.photo_url
     const fileExtension = photo.name.split(".").pop()?.toLowerCase() || "jpg"
-    const filename = `${match.uin}/${self.crypto.randomUUID()}.${fileExtension}`
+    const filename = `${match.uin}/${randomUUID()}.${fileExtension}`
 
     const { error: uploadError } = await adminSupabase.storage
       .from("student-photos")
@@ -168,6 +161,12 @@ async function processPhoto(
         status: "failed",
         message: "Database update failed",
       }
+    }
+
+    // Delete the previous photo only after the new one is saved, so a failed upload never leaves a student without a photo.
+    if (previousPhoto && !previousPhoto.includes("/placeholder.svg") && !previousPhoto.startsWith("http")) {
+      const { error: removeError } = await adminSupabase.storage.from("student-photos").remove([previousPhoto])
+      if (removeError) console.error(`[v0] Could not remove previous photo for ${match.uin}:`, removeError)
     }
 
     const confidenceText = match.confidence === "high" ? "" : ` (${match.confidence} confidence)`
