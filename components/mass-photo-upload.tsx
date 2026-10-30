@@ -9,7 +9,8 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Upload, FolderOpen, CheckCircle, XCircle, AlertCircle, Users, Clock, FileCheck } from "lucide-react"
+import { Upload, FolderOpen, CheckCircle, XCircle, AlertCircle, Users, Clock, FileCheck, Download } from "lucide-react"
+import { toCsv, downloadFile } from "@/lib/csv"
 import { validatePhotoFilename, extractUINFromFilename, extractNameFromFilename } from "@/lib/photo-matching"
 
 interface PhotoProcessingResult {
@@ -37,12 +38,51 @@ interface FilePreview {
   uin: string
   validation: ReturnType<typeof validatePhotoFilename>
   preview?: string
+  originalName?: string
 }
 
 // Vercel rejects request bodies over 4.5MB, so photos are sent in batches below that limit.
-const MAX_FILE_BYTES = 4 * 1024 * 1024
+// The student-photos bucket only accepts JPEG/PNG up to 2MB, so larger or WebP photos are
+// resized and re-encoded as JPEG in the browser before upload.
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024
+const STORAGE_MAX_BYTES = 2 * 1024 * 1024
+const TARGET_BYTES = 1.8 * 1024 * 1024
+const MAX_DIMENSION = 1200
 const MAX_BATCH_BYTES = 3.5 * 1024 * 1024
 const MAX_BATCH_FILES = 15
+
+async function prepareForUpload(file: File): Promise<File> {
+  const acceptedAsIs = file.type === "image/jpeg" || file.type === "image/png"
+  if (acceptedAsIs && file.size <= TARGET_BYTES) return file
+
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Could not process image")
+  ctx.fillStyle = "#ffffff"
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+
+  const baseName = file.name.replace(/\.[^.]+$/, "")
+  for (const quality of [0.85, 0.7, 0.55]) {
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality))
+    if (blob && blob.size <= TARGET_BYTES) return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" })
+  }
+  throw new Error("Could not shrink photo below 2MB")
+}
+
+function exportFailures(results: PhotoProcessingResult[]) {
+  const failures = results.filter((r) => r.status !== "success")
+  const csv = toCsv(
+    ["Filename", "UIN", "Status", "Reason"],
+    failures.map((r) => [r.filename, r.uin, r.status === "no-student" ? "No matching student" : "Failed", r.message]),
+  )
+  downloadFile(`photo-upload-errors_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+}
 
 function buildBatches(files: FilePreview[]): FilePreview[][] {
   const batches: FilePreview[][] = []
@@ -126,15 +166,27 @@ export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
             status: "failed",
             message: entry.validation.issues.join(", ") || "Invalid filename",
           })
-        } else if (entry.file.size > MAX_FILE_BYTES) {
+        } else if (entry.file.size > MAX_SOURCE_BYTES) {
           results.push({
             filename: entry.file.name,
             uin: entry.uin,
             status: "failed",
-            message: "File too large (max 4MB)",
+            message: "File too large (max 25MB)",
           })
         } else {
-          uploadable.push(entry)
+          setCurrentFile(`Preparing ${entry.file.name}`)
+          try {
+            const prepared = await prepareForUpload(entry.file)
+            if (prepared.size > STORAGE_MAX_BYTES) throw new Error("Could not shrink photo below 2MB")
+            uploadable.push({ ...entry, file: prepared, originalName: entry.file.name })
+          } catch (prepError) {
+            results.push({
+              filename: entry.file.name,
+              uin: entry.uin,
+              status: "failed",
+              message: prepError instanceof Error ? prepError.message : "Could not read image",
+            })
+          }
         }
       }
 
@@ -142,7 +194,8 @@ export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
       let done = 0
 
       for (const batch of batches) {
-        setCurrentFile(`${batch[0].file.name}${batch.length > 1 ? ` and ${batch.length - 1} more` : ""}`)
+        const originalNames = new Map(batch.map((entry) => [entry.file.name, entry.originalName ?? entry.file.name]))
+        setCurrentFile(`${originalNames.get(batch[0].file.name)}${batch.length > 1 ? ` and ${batch.length - 1} more` : ""}`)
         const formData = new FormData()
         batch.forEach(({ file }) => formData.append("photos", file))
 
@@ -158,10 +211,14 @@ export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
             )
           }
           if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
-          results.push(...(body.results ?? []))
+          results.push(
+            ...(body.results ?? []).map((r) => ({ ...r, filename: originalNames.get(r.filename) ?? r.filename })),
+          )
         } catch (batchError) {
           const message = batchError instanceof Error ? batchError.message : "Upload failed"
-          batch.forEach(({ file, uin }) => results.push({ filename: file.name, uin, status: "failed", message }))
+          batch.forEach(({ file, uin, originalName }) =>
+            results.push({ filename: originalName ?? file.name, uin, status: "failed", message }),
+          )
         }
 
         done += batch.length
@@ -298,7 +355,7 @@ export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
                 <ul className="text-sm space-y-1">
                   <li>• Name photos with the student's UIN (e.g., "12345.jpg" or "12.jpg")</li>
                   <li>• Supported formats: JPEG, PNG, WebP</li>
-                  <li>• Maximum file size: 4MB per photo</li>
+                  <li>• Photos over 2MB or in WebP format are resized automatically before upload</li>
                   <li>• Existing photos will be replaced automatically</li>
                   <li>• Photos for non-existent students will be skipped</li>
                 </ul>
@@ -455,7 +512,13 @@ export function MassPhotoUpload({ onUploadComplete }: MassPhotoUploadProps) {
                   </div>
                 )}
 
-                <div className="flex justify-center">
+                <div className="flex flex-wrap justify-center gap-2">
+                  {uploadResult.failed > 0 && (
+                    <Button onClick={() => exportFailures(uploadResult.results)} variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Error List ({uploadResult.failed})
+                    </Button>
+                  )}
                   <Button onClick={resetUpload} variant="outline">
                     Upload More Photos
                   </Button>

@@ -88,22 +88,23 @@ async function processPhoto(
       }
     }
 
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp"]
+    // Must match the student-photos bucket settings (2MB, JPEG/PNG only).
+    const allowedTypes = ["image/jpeg", "image/png"]
     if (!allowedTypes.includes(photo.type)) {
       return {
         filename: photo.name,
         uin: "unknown",
         status: "failed",
-        message: "Invalid file type",
+        message: "File type not accepted (use JPEG or PNG)",
       }
     }
 
-    if (photo.size > 4 * 1024 * 1024) {
+    if (photo.size > 2 * 1024 * 1024) {
       return {
         filename: photo.name,
         uin: "unknown",
         status: "failed",
-        message: "File too large (max 4MB)",
+        message: "File too large for storage (max 2MB)",
       }
     }
 
@@ -139,11 +140,16 @@ async function processPhoto(
 
     if (uploadError) {
       console.error(`[v0] Upload error for ${match.uin}:`, uploadError)
+      const reason = String(uploadError.message || "")
       return {
         filename: photo.name,
         uin: match.uin,
         status: "failed",
-        message: "Upload failed",
+        message: /exceed|too large|size/i.test(reason)
+          ? "File too large for storage (max 2MB)"
+          : /mime|type/i.test(reason)
+            ? "File type not accepted (use JPEG or PNG)"
+            : `Upload failed${reason ? `: ${reason}` : ""}`,
       }
     }
 

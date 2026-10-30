@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { PastSessions } from "@/components/past-sessions"
+import { ExportSwipesDialog } from "@/components/export-swipes-dialog"
 
 export default async function PastSessionsPage() {
   const supabase = await createServerClient()
@@ -28,10 +29,11 @@ export default async function PastSessionsPage() {
             Back to Dashboard
           </Link>
         </Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold">Past Sessions</h1>
           <p className="text-muted-foreground">View completed meal swipe sessions</p>
         </div>
+        {(role === "admin" || role === "staff") && <ExportSwipesDialog />}
       </div>
 
       <PastSessions />
