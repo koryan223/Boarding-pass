@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireRole } from "@/lib/auth-server"
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows"
-import { deleteSwipesForStudents } from "@/lib/swipe-deletion"
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,10 +32,7 @@ export async function POST(request: NextRequest) {
     console.log(`[SERVER][v0] Deleting all ${students.length} students`)
 
     console.log("[SERVER][v0] Deleting all meal swipes first")
-    const { error: mealSwipesDeleteError } = await deleteSwipesForStudents(
-      adminSupabase,
-      students.map((student) => student.uin),
-    )
+    const { error: mealSwipesDeleteError } = await adminSupabase.from("meal_swipes").delete().neq("student_uin", "") // Delete all meal swipes
 
     if (mealSwipesDeleteError) {
       console.error("[SERVER][v0] Error deleting all meal swipes:", mealSwipesDeleteError)

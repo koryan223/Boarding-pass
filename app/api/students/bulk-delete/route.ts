@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireRole } from "@/lib/auth-server"
-import { deleteSwipesForStudents } from "@/lib/swipe-deletion"
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,12 +41,17 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[SERVER][v0] Deleting meal swipes using admin client for students:`, uins)
-    const { error: mealSwipesDeleteError } = await deleteSwipesForStudents(adminSupabase, uins)
+    const { error: mealSwipesDeleteError, count: deletedSwipesCount } = await adminSupabase
+      .from("meal_swipes")
+      .delete()
+      .in("student_uin", uins)
 
     if (mealSwipesDeleteError) {
       console.error("[SERVER][v0] Error deleting meal swipes:", mealSwipesDeleteError)
       return NextResponse.json({ error: "Failed to delete associated meal swipes" }, { status: 500 })
     }
+
+    console.log(`[SERVER][v0] Successfully deleted ${deletedSwipesCount || 0} meal swipes`)
 
     const { data: remainingSwipes, error: verifyError } = await adminSupabase
       .from("meal_swipes")

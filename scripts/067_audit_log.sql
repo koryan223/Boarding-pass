@@ -4,6 +4,10 @@
 --
 -- The log is append-only and readable only by admins.
 --
+-- Meal swipes are the one exception to "every change": taking a swipe is not
+-- recorded (the swipe itself is the record), and removing swipes is recorded
+-- as one summary entry per delete rather than a copy of each swipe.
+--
 -- When a new table is added to the app, attach the two triggers to it the same
 -- way as in section 2, otherwise its changes will not be recorded.
 
@@ -262,9 +266,7 @@ end;
 $$;
 
 -- Records deletes for a whole statement at once, including rows removed by a
--- cascade. Recording deletes row by row is too slow for the bulk deletes this
--- app performs (~120,000 swipes when all students are deleted), which would
--- push them past the API's 8 second statement limit.
+-- cascade, which is much faster for bulk deletes than recording row by row.
 -- The label rules mirror the ones in audit_row_change above.
 create or replace function public.audit_rows_deleted()
 returns trigger
@@ -317,6 +319,44 @@ begin
     v_context.metadata
   from (select to_jsonb(o) as j from old_rows o) d;
 
+  return null;
+end;
+$$;
+
+-- Records a removal of meal swipes as a single summary entry. Copying every
+-- swipe into the log costs about 6 seconds per 60,000 swipes, which pushes
+-- large deletes past the API's 8 second statement limit.
+create or replace function public.audit_swipes_deleted()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count bigint;
+  v_summary jsonb;
+begin
+  select
+    count(*),
+    jsonb_build_object(
+      'swipes', count(*),
+      'students', count(distinct o.student_uin),
+      'sessions', count(distinct o.session_id),
+      'earliest_swipe', min(o.swiped_at),
+      'latest_swipe', max(o.swiped_at)
+    )
+  into v_count, v_summary
+  from old_rows o;
+
+  if v_count = 0 then
+    return null;
+  end if;
+
+  perform public.audit_write(
+    'DELETE', tg_table_name, null,
+    v_count || case when v_count = 1 then ' swipe' else ' swipes' end,
+    null, v_summary, null
+  );
   return null;
 end;
 $$;
@@ -414,6 +454,7 @@ revoke execute on function public.audit_current_actor() from public, anon, authe
 revoke execute on function public.audit_write(text, text, text, text, text[], jsonb, jsonb, jsonb, uuid, text) from public, anon, authenticated, service_role;
 revoke execute on function public.audit_row_change() from public, anon, authenticated, service_role;
 revoke execute on function public.audit_rows_deleted() from public, anon, authenticated, service_role;
+revoke execute on function public.audit_swipes_deleted() from public, anon, authenticated, service_role;
 revoke execute on function public.audit_auth_user_event() from public, anon, authenticated, service_role;
 revoke execute on function public.audit_auth_session_event() from public, anon, authenticated, service_role;
 revoke execute on function public.log_audit_event(text, text, jsonb) from public, anon, service_role;
@@ -450,14 +491,18 @@ begin
       'create trigger audit_row_change after %s on public.%I for each row execute function public.audit_row_change(%s)',
       -- student_deletion_log already describes a deletion that is recorded on
       -- the students table, so only tampering with it (edit/remove) is logged.
-      case when t.table_name = 'student_deletion_log' then 'update' else 'insert or update' end,
+      -- New meal swipes are not logged; edits to existing ones are.
+      case when t.table_name in ('student_deletion_log', 'meal_swipes') then 'update' else 'insert or update' end,
       t.table_name,
       concat_ws(', ', quote_literal(t.pk1), quote_literal(t.pk2))
     );
     execute format(
-      'create trigger audit_rows_deleted after delete on public.%I referencing old table as old_rows for each statement execute function public.audit_rows_deleted(%s)',
+      'create trigger audit_rows_deleted after delete on public.%I referencing old table as old_rows for each statement execute function public.%s',
       t.table_name,
-      concat_ws(', ', quote_literal(t.pk1), quote_literal(t.pk2))
+      case
+        when t.table_name = 'meal_swipes' then 'audit_swipes_deleted()'
+        else format('audit_rows_deleted(%s)', concat_ws(', ', quote_literal(t.pk1), quote_literal(t.pk2)))
+      end
     );
     execute format(
       'create trigger audit_truncate after truncate on public.%I for each statement execute function public.audit_row_change()',
