@@ -1,12 +1,13 @@
 import type { Student, StudentSwipeAnalytics } from "@/lib/types/student"
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows"
 
 export type { Student, StudentSwipeAnalytics }
 
 // Helper function to generate signed URLs for a list of students
 async function generateSignedPhotoUrls(
-  students: Omit<Student, "photo_url"> & { photo_url: string | null }[],
+  students: (Omit<Student, "photo_url"> & { photo_url: string | null })[],
 ): Promise<Student[]> {
   const adminSupabase = createAdminClient()
 
@@ -62,56 +63,64 @@ async function generateSignedPhotoUrls(
 // Server-side functions (called by API routes)
 export async function getAllStudents(): Promise<Student[]> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase
-    .from("students")
-    .select("*, groups(name)")
-    .order("last_name", { ascending: true })
 
-  if (error) {
+  let students
+  try {
+    students = await fetchAllRows((from, to) =>
+      supabase
+        .from("students")
+        .select("*, groups(name)", { count: "exact" })
+        .order("last_name", { ascending: true })
+        .order("uin", { ascending: true })
+        .range(from, to),
+    )
+  } catch (error) {
     console.error("[v0] Error fetching students:", error)
     throw new Error("Failed to fetch students")
   }
 
-  return generateSignedPhotoUrls(data || [])
+  return generateSignedPhotoUrls(students)
 }
 
 export async function searchStudents(query: string): Promise<Student[]> {
   const supabase = await createServerClient()
 
-  if (query.includes(" ")) {
-    const parts = query.trim().split(/\s+/)
-    const firstName = parts[0]
-    const lastName = parts.slice(1).join(" ")
+  let students
+  try {
+    if (query.includes(" ")) {
+      const parts = query.trim().split(/\s+/)
+      const firstName = parts[0]
+      const lastName = parts.slice(1).join(" ")
 
-    // Search for first name AND last name match
-    const { data, error } = await supabase
-      .from("students")
-      .select("*, groups(name)")
-      .ilike("first_name", `%${firstName}%`)
-      .ilike("last_name", `%${lastName}%`)
-      .order("last_name", { ascending: true })
-
-    if (error) {
-      console.error("[v0] Error searching students:", error)
-      throw new Error("Failed to search students")
+      // Search for first name AND last name match
+      students = await fetchAllRows((from, to) =>
+        supabase
+          .from("students")
+          .select("*, groups(name)", { count: "exact" })
+          .ilike("first_name", `%${firstName}%`)
+          .ilike("last_name", `%${lastName}%`)
+          .order("last_name", { ascending: true })
+          .order("uin", { ascending: true })
+          .range(from, to),
+      )
+    } else {
+      // Single word search - check UIN, first_name, or last_name
+      students = await fetchAllRows((from, to) =>
+        supabase
+          .from("students")
+          .select("*, groups(name)", { count: "exact" })
+          .or(`uin.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+          .order("last_name", { ascending: true })
+          .order("uin", { ascending: true })
+          .range(from, to),
+      )
     }
-
-    return generateSignedPhotoUrls(data || [])
-  }
-
-  // Single word search - check UIN, first_name, or last_name
-  const { data, error } = await supabase
-    .from("students")
-    .select("*, groups(name)")
-    .or(`uin.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
-    .order("last_name", { ascending: true })
-
-  if (error) {
+  } catch (error) {
     console.error("[v0] Error searching students:", error)
     throw new Error("Failed to search students")
   }
 
-  return generateSignedPhotoUrls(data || [])
+  return generateSignedPhotoUrls(students)
 }
 
 export async function getStudentById(id: string): Promise<Student | null> {

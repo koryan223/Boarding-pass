@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getAllStudents, searchStudents } from "@/lib/student-management"
 import { canAccessLocation, getAllowedLocationIds } from "@/lib/location-access"
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows"
 
 function safeStringify(obj: any): string {
   try {
@@ -85,28 +86,26 @@ export async function GET(request: NextRequest) {
       students = await searchStudents(query)
     } else if (groupId) {
       console.log("[v0] Fetching students for group:", groupId)
-      const { data, error } = await supabase
-        .from("students")
-        .select("*")
-        .eq("group_id", groupId)
-        .order("last_name", { ascending: true })
-
-      if (error) {
-        throw error
-      }
-      students = data || []
+      students = await fetchAllRows((from, to) =>
+        supabase
+          .from("students")
+          .select("*", { count: "exact" })
+          .eq("group_id", groupId)
+          .order("last_name", { ascending: true })
+          .order("uin", { ascending: true })
+          .range(from, to),
+      )
     } else if (baseLocationId) {
       console.log("[v0] Fetching students for base location:", baseLocationId)
-      const { data, error } = await supabase
-        .from("students")
-        .select("*")
-        .eq("base_location_id", baseLocationId)
-        .order("last_name", { ascending: true })
-
-      if (error) {
-        throw error
-      }
-      students = data || []
+      students = await fetchAllRows((from, to) =>
+        supabase
+          .from("students")
+          .select("*", { count: "exact" })
+          .eq("base_location_id", baseLocationId)
+          .order("last_name", { ascending: true })
+          .order("uin", { ascending: true })
+          .range(from, to),
+      )
     } else {
       console.log("[v0] Fetching all students")
       students = await getAllStudents()

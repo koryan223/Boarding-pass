@@ -295,13 +295,19 @@ export default function ManageStudentsPage() {
               />
             </div>
             <div className="mt-4 border-t border-border pt-4">
-                <StudentFilters filters={filters} onChange={handleFiltersChange} />
-              </div>
-              {students.length > 0 && (
-                <div className="mt-4 border-t border-border pt-4">
-                  <MealPlanBreakdown students={students} filters={filters} onChange={handleFiltersChange} />
-                </div>
-              )}
+              <StudentFilters filters={filters} onChange={handleFiltersChange} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <MealPlanBreakdown
+              students={students}
+              filters={filters}
+              onChange={handleFiltersChange}
+              isLoading={isLoading}
+            />
           </CardContent>
         </Card>
 
