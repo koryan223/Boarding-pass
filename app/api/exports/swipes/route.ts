@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth-server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { createServerClient } from "@/lib/supabase/server"
 import { getAllowedLocationIds } from "@/lib/location-access"
 import { toCsv } from "@/lib/csv"
 
@@ -125,6 +126,27 @@ export async function GET(request: NextRequest) {
       ["Date", "Time", "UIN", "First Name", "Last Name", "Meal Plan", "Location", "Session", "Status"],
       rows,
     )
+
+    // An export changes no data, so the database cannot record it on its own.
+    // If it cannot be recorded, the file is not handed out.
+    const supabase = await createServerClient()
+    const { error: auditError } = await supabase.rpc("log_audit_event", {
+      p_action: "EXPORT",
+      p_label: "Meal swipes (CSV)",
+      p_details: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        locations: locationIds.map((id) => locationNames.get(id) ?? id),
+        rows: rows.length,
+      },
+    })
+    if (auditError) {
+      console.error("[v0] Could not record swipe export in the audit log:", auditError)
+      return NextResponse.json(
+        { error: "The export could not be recorded in the audit log, so it was not downloaded. Please try again." },
+        { status: 500 },
+      )
+    }
 
     return new NextResponse(`\uFEFF${csv}`, {
       headers: {

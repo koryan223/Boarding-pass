@@ -118,6 +118,18 @@ export default async function AdminPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Audit Log</CardTitle>
+            <CardDescription>See every change and sign-in, and who made it</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="w-full">
+              <Link href="/admin/audit-log">View Audit Log</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Reports</CardTitle>
             <CardDescription>Generate comprehensive reports</CardDescription>
           </CardHeader>
