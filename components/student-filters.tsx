@@ -110,7 +110,7 @@ export function MealPlanBreakdown({
   const weeklyTotal = weeklyEntries.reduce((sum, [, n]) => sum + n, 0)
 
   return (
-    <section aria-labelledby="meal-plan-breakdown" className="flex flex-col gap-3">
+    <section aria-labelledby="meal-plan-breakdown" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="meal-plan-breakdown" className="text-base font-semibold text-foreground">
           Meal plan breakdown
@@ -144,18 +144,18 @@ export function MealPlanBreakdown({
           <span className="text-sm text-muted-foreground">No students on a weekly plan.</span>
         )}
       </div>
-      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
-        <div className="flex gap-1">
+      <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm text-muted-foreground sm:flex-row sm:gap-0">
+        <div className="flex items-baseline sm:pr-6">
           <dt>Weekly total:</dt>
-          <dd className="font-semibold text-foreground tabular-nums">{weeklyTotal}</dd>
+          <dd className="ml-2 font-semibold text-foreground tabular-nums">{weeklyTotal}</dd>
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-baseline sm:border-l sm:border-border sm:px-6">
           <dt>Prepaid:</dt>
-          <dd className="font-semibold text-foreground tabular-nums">{prepaid}</dd>
+          <dd className="ml-2 font-semibold text-foreground tabular-nums">{prepaid}</dd>
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-baseline sm:border-l sm:border-border sm:pl-6">
           <dt>Count only:</dt>
-          <dd className="font-semibold text-foreground tabular-nums">{countOnly}</dd>
+          <dd className="ml-2 font-semibold text-foreground tabular-nums">{countOnly}</dd>
         </div>
       </dl>
     </section>
