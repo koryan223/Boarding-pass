@@ -139,19 +139,6 @@ export async function processSwipe(
     return { success: false, message: "Session is required to process swipes" }
   }
 
-  const { data: sessionData, error: sessionError } = await supabase
-    .from("sessions")
-    .select("reentry_enabled")
-    .eq("id", sessionId)
-    .single()
-
-  if (sessionError) {
-    console.error("[SERVER][v0] Error fetching session:", sessionError)
-  }
-
-  const reentryEnabled = sessionData?.reentry_enabled === true
-  console.log("[SERVER][v0] Session reentry_enabled:", reentryEnabled)
-
   const studentData = await getStudentByUin(studentUin)
   if (!studentData) {
     return { success: false, message: "Student not found" }
@@ -178,36 +165,25 @@ export async function processSwipe(
     isPrepaidPlan,
   )
 
-  let isReentry = false
-  if (reentryEnabled) {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-    const { data: recentSwipes, error: recentSwipeError } = await supabase
-      .from("meal_swipes")
-      .select("id, swiped_at")
-      .eq("student_uin", studentUin)
-      .eq("session_id", sessionId)
-      .in("status", ["success", "reentry"])
-      .gte("swiped_at", oneHourAgo)
-      .order("swiped_at", { ascending: false })
-      .limit(1)
+  // One database call checks re-entry, takes the credit and records the swipe together,
+  // so a credit is never taken without a swipe on record (see scripts/068).
+  const { data: swipe, error: swipeError } = await supabase.rpc("record_meal_swipe", {
+    p_uin: studentUin,
+    p_session_id: sessionId,
+  })
 
-    if (recentSwipeError) {
-      console.error("[SERVER][v0] Error checking recent swipes:", recentSwipeError)
-    }
-
-    isReentry = !!recentSwipes && recentSwipes.length > 0
-    console.log("[SERVER][v0] Is re-entry:", isReentry, "Recent swipes:", recentSwipes?.length || 0)
+  if (swipeError || !swipe) {
+    console.error("[SERVER] Could not record swipe:", swipeError)
+    return { success: false, message: "Could not record the swipe, please swipe again" }
+  }
+  if (swipe.status === "session_not_found") {
+    return { success: false, message: "Session not found" }
+  }
+  if (swipe.status === "student_not_found") {
+    return { success: false, message: "Student not found" }
   }
 
-  // If re-entry, record it but don't deduct credits
-  if (isReentry) {
-    await supabase.from("meal_swipes").insert({
-      student_uin: studentUin,
-      session_id: sessionId,
-      swiped_by: user.id,
-      status: "reentry",
-    })
-
+  if (swipe.status === "reentry") {
     // Get weekly swipes count
     const startOfWeek = new Date()
     startOfWeek.setHours(0, 0, 0, 0)
@@ -249,15 +225,7 @@ export async function processSwipe(
     }
   }
 
-  // Check for credits and handle insufficient credits case (for standard and prepaid plans)
-  if (!isCountPlan && studentData.weekly_credits <= 0) {
-    await supabase.from("meal_swipes").insert({
-      student_uin: studentUin,
-      session_id: sessionId,
-      swiped_by: user.id,
-      status: "insufficient_credits",
-    })
-
+  if (swipe.status === "insufficient_credits") {
     const adminSupabase = createAdminClient()
     const needsFallback = !studentData.photo_url || studentData.photo_url.includes("/placeholder.svg")
 
@@ -270,67 +238,14 @@ export async function processSwipe(
       if (signedUrlData?.signedUrl) signedUrl = signedUrlData.signedUrl
     }
 
-    studentData.photo_url = signedUrl
-
     return {
       success: false,
-      message: `Insufficient credit: ${studentData.weekly_credits} of ${studentData.meal_plan} left`,
-      student: studentData,
+      message: `Insufficient credit: ${swipe.weekly_credits} of ${swipe.meal_plan} left`,
+      student: { ...studentData, photo_url: signedUrl, weekly_credits: swipe.weekly_credits },
     }
   }
 
-  // Deduct atomically in the database so overlapping swipes can't read the same
-  // balance and overwrite each other (which previously lost deductions).
-  let remainingCredits = studentData.weekly_credits
-  if (!isCountPlan) {
-    const { data: newBalance, error: updateError } = await supabase.rpc("decrement_student_credit", {
-      p_uin: studentUin,
-    })
-
-    if (updateError) {
-      return { success: false, message: "Failed to update credits" }
-    }
-
-    if (newBalance === null || newBalance === undefined) {
-      // The balance read above is stale here; report the real one so the screen
-      // never shows "credits left" next to a rejection.
-      const { data: current } = await supabase
-        .from("students")
-        .select("weekly_credits, meal_plan")
-        .eq("uin", studentUin)
-        .maybeSingle()
-      const actualCredits = current?.weekly_credits ?? 0
-
-      if (actualCredits > 0) {
-        console.error("[SERVER] Credit decrement matched no row despite a positive balance", {
-          studentUin,
-          actualCredits,
-        })
-        return { success: false, message: "Could not deduct credit, please swipe again", student: studentData }
-      }
-
-      await supabase.from("meal_swipes").insert({
-        student_uin: studentUin,
-        session_id: sessionId,
-        swiped_by: user.id,
-        status: "insufficient_credits",
-      })
-      return {
-        success: false,
-        message: `Insufficient credit: 0 of ${current?.meal_plan ?? studentData.meal_plan} left`,
-        student: { ...studentData, weekly_credits: actualCredits },
-      }
-    }
-
-    remainingCredits = newBalance as number
-  }
-
-  await supabase.from("meal_swipes").insert({
-    student_uin: studentUin,
-    session_id: sessionId,
-    swiped_by: user.id,
-    status: "success",
-  })
+  const remainingCredits: number = swipe.weekly_credits
 
   const startOfWeek = new Date()
   startOfWeek.setHours(0, 0, 0, 0)

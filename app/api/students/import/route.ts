@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { canAccessLocation, getAllowedLocationIds } from "@/lib/location-access"
+import { parseCsv } from "@/lib/csv"
 
 type MealPlanType = "standard" | "count" | "prepaid"
 
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     // Read and parse CSV
     const csvText = await file.text()
-    const lines = csvText.split("\n").filter((line) => line.trim())
+    const lines = parseCsv(csvText).filter((cells) => cells.some((cell) => cell.trim()))
 
     if (lines.length < 2) {
       return NextResponse.json(
@@ -79,9 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Parse header (strip BOM on the first cell and normalize to lowercase for
     // case-insensitive column matching, so "Group", "GROUP", "group" all work).
-    const header = lines[0]
-      .split(",")
-      .map((col) => col.trim().replace(/^\uFEFF/, "").replace(/"/g, ""))
+    const header = lines[0].map((col) => col.trim().replace(/^\uFEFF/, ""))
     const normalizedHeader = header.map((col) => col.toLowerCase())
     const requiredColumns = ["uin", "fname", "lname", "room_number", "meal_plan", "base_location"]
 
@@ -107,7 +106,7 @@ export async function POST(request: NextRequest) {
     const seenUINs = new Set<string>()
 
     for (let i = 1; i < lines.length; i++) {
-      const row = lines[i].split(",").map((cell) => cell.trim().replace(/"/g, ""))
+      const row = lines[i].map((cell) => cell.trim())
 
       if (row.length < requiredColumns.length) {
         errors.push(`Row ${i + 1}: Column count mismatch`)

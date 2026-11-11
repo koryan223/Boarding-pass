@@ -21,7 +21,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Search, Users, ArrowLeft, Upload, Trash2, CheckSquare, Square, Camera, LayoutGrid, Grid3x3 } from "lucide-react"
+import {
+  Search,
+  Users,
+  ArrowLeft,
+  Upload,
+  Download,
+  Loader2,
+  Trash2,
+  CheckSquare,
+  Square,
+  Camera,
+  LayoutGrid,
+  Grid3x3,
+} from "lucide-react"
+import { downloadFile } from "@/lib/csv"
 import { getAllStudentsClient, searchStudentsClient, type Student } from "@/lib/student-management"
 import { useAuth } from "@/lib/auth"
 import { CsvImport } from "@/components/csv-import"
@@ -49,6 +63,8 @@ export default function ManageStudentsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<"cards" | "thumbnails">("cards")
   const [filters, setFilters] = useState<StudentFilterState>(DEFAULT_STUDENT_FILTERS)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const { data: locationData } = useSWR<{ locations: { id: string; name: string }[] }>(
     "/api/locations?accessible=1",
@@ -125,6 +141,30 @@ export default function ManageStudentsPage() {
       console.error("[v0] Error searching students:", error)
     } finally {
       setIsSearching(false)
+    }
+  }
+
+  const isNarrowed = isFiltered || searchQuery.trim() !== ""
+
+  const handleExport = async () => {
+    setExportError(null)
+    setIsExporting(true)
+    try {
+      const response = await fetch("/api/exports/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uins: filteredStudents.map((student) => student.uin) }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error || `Export failed (HTTP ${response.status})`)
+      }
+      const date = new Date().toISOString().slice(0, 10)
+      downloadFile(`students${isNarrowed ? "_filtered" : ""}_${date}.csv`, await response.blob())
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Export failed")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -235,6 +275,19 @@ export default function ManageStudentsPage() {
               {showImport ? "Hide Import" : "Import CSV"}
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={isExporting || isLoading || isSearching || filteredStudents.length === 0}
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {isNarrowed ? `Export CSV (${filteredStudents.length})` : "Export CSV"}
+            </Button>
+            <Button
               variant={showMassPhotoUpload ? "default" : "outline"}
               size="sm"
               onClick={() => setShowMassPhotoUpload(!showMassPhotoUpload)}
@@ -270,6 +323,12 @@ export default function ManageStudentsPage() {
             </Badge>
           </div>
         </div>
+
+        {exportError && (
+          <p role="alert" className="mb-6 text-sm text-destructive">
+            {exportError}
+          </p>
+        )}
 
         {showImport && (
           <div className="mb-6">
