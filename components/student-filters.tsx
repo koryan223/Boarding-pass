@@ -146,7 +146,7 @@ export function MealPlanBreakdown({
       </div>
       <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm text-muted-foreground sm:flex-row sm:gap-0">
         <div className="flex items-baseline sm:pr-6">
-          <dt>Weekly total:</dt>
+          <dt>Total:</dt>
           <dd className="ml-2 font-semibold text-foreground tabular-nums">{weeklyTotal}</dd>
         </div>
         <div className="flex items-baseline sm:border-l sm:border-border sm:px-6">
