@@ -6,7 +6,9 @@
 --
 -- Meal swipes are the one exception to "every change": taking a swipe is not
 -- recorded (the swipe itself is the record), and removing swipes is recorded
--- as one summary entry per delete rather than a copy of each swipe.
+-- as one summary entry per delete rather than a copy of each swipe. The credit
+-- a swipe deducts from the student is not recorded either; every other change
+-- to a student, including a manual credit edit, is.
 --
 -- When a new table is added to the app, attach the two triggers to it the same
 -- way as in section 2, otherwise its changes will not be recorded.
@@ -218,6 +220,15 @@ begin
       return null;
     end if;
 
+    -- The credit a meal swipe takes is not recorded. Only decrement_student_credit
+    -- sets this flag, and only a one-credit deduction with no other change is skipped.
+    if tg_table_schema = 'public' and tg_table_name = 'students'
+      and v_changed = array['weekly_credits']
+      and current_setting('audit.swipe_credit_deduction', true) = 'on'
+      and (v_after ->> 'weekly_credits')::int = (v_before ->> 'weekly_credits')::int - 1 then
+      return null;
+    end if;
+
     select jsonb_object_agg(k, v_before -> k), jsonb_object_agg(k, v_after -> k)
     into v_old, v_new
     from unnest(v_changed) k;
@@ -262,6 +273,28 @@ begin
 
   perform public.audit_write(tg_op, tg_table_name, v_record_id, v_label, v_changed, v_old, v_new);
   return null;
+end;
+$$;
+
+-- Replaces the version from 063 so the deduction a swipe makes is marked for
+-- audit_row_change to skip. The flag is switched off again straight away so
+-- later updates in the same transaction are recorded as normal.
+create or replace function public.decrement_student_credit(p_uin text)
+returns integer
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_credits integer;
+begin
+  perform set_config('audit.swipe_credit_deduction', 'on', true);
+  update students
+  set weekly_credits = weekly_credits - 1
+  where uin = p_uin and weekly_credits > 0
+  returning weekly_credits into v_credits;
+  perform set_config('audit.swipe_credit_deduction', 'off', true);
+  return v_credits;
 end;
 $$;
 
