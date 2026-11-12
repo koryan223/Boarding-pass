@@ -106,7 +106,9 @@ export async function POST(request: NextRequest) {
     const seenUINs = new Set<string>()
 
     for (let i = 1; i < lines.length; i++) {
-      const row = lines[i].map((cell) => cell.trim())
+      // Exported files put an apostrophe in front of cells starting with = + - @ so
+      // spreadsheets don't run them as formulas; drop it so a re-import matches the original.
+      const row = lines[i].map((cell) => cell.trim().replace(/^'(?=[=+\-@])/, ""))
 
       if (row.length < requiredColumns.length) {
         errors.push(`Row ${i + 1}: Column count mismatch`)
